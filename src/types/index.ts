@@ -59,8 +59,10 @@ export interface ActivityEvent {
 export interface UserProfile {
   id: string;
   email: string;
+  username?: string;
   full_name?: string;
   role: 'user' | 'admin';
+  is_anonymous?: boolean;
   created_at: string;
 }
 

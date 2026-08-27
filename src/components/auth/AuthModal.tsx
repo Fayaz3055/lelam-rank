@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Mail, Lock, User, CheckCircle2, ArrowRight, Shield, AlertCircle } from 'lucide-react';
+import { X, Mail, Lock, User, CheckCircle2, ArrowRight, Shield, AlertCircle, AtSign, Eye } from 'lucide-react';
 import { authService } from '@/services/auth';
 
 interface AuthModalProps {
@@ -12,9 +12,9 @@ interface AuthModalProps {
 
 export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   const [tab, setTab] = useState<'signin' | 'signup' | 'forgot'>('signin');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -37,20 +37,16 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           setMessage('A password reset link has been sent to your email address.');
         }
       } else if (tab === 'signup') {
-        const result = await authService.signUp(email, password, name || 'Founder');
+        const result = await authService.signUp(username, email, password);
         setLoading(false);
         if (result.error) {
           setError(result.error);
         } else {
-          if (result.requiresEmailVerification) {
-            setMessage('Account created! Please check your email to verify your address before placing live bids.');
-          } else {
-            setMessage('Account successfully created and signed in.');
-          }
+          setMessage('Account successfully created! You are now logged in.');
           setTimeout(() => {
             onSuccess?.();
             onClose();
-          }, 1500);
+          }, 800);
         }
       } else {
         const result = await authService.signIn(email, password);
@@ -69,13 +65,37 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
     }
   };
 
+  const handleGuestSignIn = async () => {
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const result = await authService.signInAnonymously();
+      setLoading(false);
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setMessage('Browsing as Guest');
+        setTimeout(() => {
+          onSuccess?.();
+          onClose();
+        }, 500);
+      }
+    } catch (err: unknown) {
+      setLoading(false);
+      const errMessage = err instanceof Error ? err.message : 'Guest sign-in failed.';
+      setError(errMessage);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
       <div className="relative w-full max-w-md bg-[#0F1117] border border-white/[0.1] rounded-2xl p-6 md:p-8 shadow-2xl">
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.05]"
+          className="absolute top-5 right-5 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.05] cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
@@ -92,8 +112,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           </h3>
           <p className="text-xs text-slate-400 mt-1">
             {tab === 'signin' && 'Manage your entries and outbid competitors'}
-            {tab === 'signup' && 'Claim your spot on Kerala\'s competitive leaderboard'}
-            {tab === 'forgot' && 'Enter your verified email to receive instructions'}
+            {tab === 'signup' && 'Choose your public username and register instantly'}
+            {tab === 'forgot' && 'Enter your account email to receive instructions'}
           </p>
         </div>
 
@@ -106,7 +126,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                 setError(null);
                 setMessage(null);
               }}
-              className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                 tab === 'signin'
                   ? 'bg-amber-500 text-black shadow'
                   : 'text-slate-400 hover:text-white'
@@ -120,7 +140,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                 setError(null);
                 setMessage(null);
               }}
-              className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                 tab === 'signup'
                   ? 'bg-amber-500 text-black shadow'
                   : 'text-slate-400 hover:text-white'
@@ -150,35 +170,48 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         <form onSubmit={handleSubmit} className="space-y-4">
           {tab === 'signup' && (
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Full Name / Founder Name
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-medium text-slate-300">
+                  Public Username *
+                </label>
+                <span className="text-[10px] text-amber-400 font-medium">Public on Leaderboard</span>
+              </div>
               <div className="relative">
-                <User className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                <AtSign className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
                 <input
                   type="text"
                   required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Arun Varma"
-                  className="w-full bg-[#151822] border border-white/[0.1] rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500/50"
+                  minLength={3}
+                  maxLength={25}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                  placeholder="e.g. arun_varma, tech_kerala"
+                  className="w-full bg-[#151822] border border-white/[0.1] rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500/50 font-mono"
                 />
               </div>
+              <p className="text-[10px] text-slate-500 mt-1">
+                Letters, numbers, and underscores (3-25 chars).
+              </p>
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5">
-              Work / Founder Email
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-medium text-slate-300">
+                {tab === 'signup' ? 'Private Email Address *' : 'Email or Username'}
+              </label>
+              {tab === 'signup' && (
+                <span className="text-[10px] text-slate-400">Kept Private</span>
+              )}
+            </div>
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
               <input
-                type="email"
+                type={tab === 'signup' ? 'email' : 'text'}
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="founder@yourstartup.com"
+                placeholder={tab === 'signup' ? 'founder@company.com' : 'Email or @username'}
                 className="w-full bg-[#151822] border border-white/[0.1] rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500/50"
               />
             </div>
@@ -188,13 +221,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-medium text-slate-300">
-                  Password
+                  Password *
                 </label>
                 {tab === 'signin' && (
                   <button
                     type="button"
                     onClick={() => setTab('forgot')}
-                    className="text-[11px] text-amber-400 hover:underline"
+                    className="text-[11px] text-amber-400 hover:underline cursor-pointer"
                   >
                     Forgot password?
                   </button>
@@ -218,7 +251,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 rounded-lg gold-gradient-button text-black font-bold text-sm flex items-center justify-center gap-2 mt-2 cursor-pointer"
+            className="w-full py-2.5 rounded-lg gold-gradient-button text-black font-bold text-sm flex items-center justify-center gap-2 mt-2 cursor-pointer disabled:opacity-50"
           >
             {loading ? (
               <span>Authenticating...</span>
@@ -226,7 +259,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
               <>
                 <span>
                   {tab === 'signin' && 'Sign In'}
-                  {tab === 'signup' && 'Create Account'}
+                  {tab === 'signup' && 'Create Account & Enter'}
                   {tab === 'forgot' && 'Send Reset Link'}
                 </span>
                 <ArrowRight className="w-4 h-4" />
@@ -235,11 +268,33 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           </button>
         </form>
 
+        {/* Guest Access Option */}
+        {tab !== 'forgot' && (
+          <div className="mt-4 pt-4 border-t border-white/[0.06] text-center">
+            <div className="relative flex items-center justify-center mb-3">
+              <div className="border-t border-white/[0.06] w-full" />
+              <span className="bg-[#0F1117] px-2 text-[10px] uppercase font-bold tracking-widest text-slate-500">
+                OR
+              </span>
+              <div className="border-t border-white/[0.06] w-full" />
+            </div>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={handleGuestSignIn}
+              className="w-full py-2.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.08] text-slate-300 hover:text-white font-semibold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Eye className="w-3.5 h-3.5 text-amber-400" />
+              <span>Continue as Guest</span>
+            </button>
+          </div>
+        )}
+
         {tab === 'forgot' && (
           <div className="mt-4 text-center">
             <button
               onClick={() => setTab('signin')}
-              className="text-xs text-slate-400 hover:text-white"
+              className="text-xs text-slate-400 hover:text-white cursor-pointer"
             >
               Back to Sign In
             </button>

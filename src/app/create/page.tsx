@@ -48,7 +48,6 @@ function CreateEntryContent() {
 
   // Real Auth State
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-  const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
   useEffect(() => {
@@ -60,10 +59,8 @@ function CreateEntryContent() {
     const user = await authService.getCurrentUser();
     setCurrentUser(user);
     if (user) {
-      const verified = await authService.isEmailVerified();
-      setIsEmailVerified(verified);
-      if (!bidderName && user.full_name) {
-        setBidderName(user.full_name);
+      if (!bidderName) {
+        setBidderName(user.username ? `@${user.username}` : user.full_name || '');
       }
     }
   };
@@ -93,22 +90,17 @@ function CreateEntryContent() {
     }
   };
 
+  const isRegistered = authService.isRegisteredUser(currentUser);
+
   const handleSubmitDetails = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    // 1. Enforce Authentication Gate
+    // 1. Enforce Authentication Gate (Must be registered, not guest)
     const user = await authService.getCurrentUser();
-    if (!user) {
-      setError('You must sign in or register before creating an entry.');
+    if (!user || !authService.isRegisteredUser(user)) {
+      setError('Create an account to continue. Registered account required to claim a spot.');
       setAuthModalOpen(true);
-      return;
-    }
-
-    // 2. Enforce Email Verification Gate
-    const verified = await authService.isEmailVerified();
-    if (!verified) {
-      setError('Please verify your email address before creating an entry. Check your inbox for the confirmation link.');
       return;
     }
 
@@ -146,24 +138,16 @@ function CreateEntryContent() {
     setError(null);
 
     try {
-      // 1. Strict Auth Gate
+      // 1. Strict Auth Gate (Registered user required)
       const user = await authService.getCurrentUser();
-      if (!user) {
+      if (!user || !authService.isRegisteredUser(user)) {
         setStep('details');
-        setError('You must be signed in to create an entry.');
+        setError('Create an account to continue. Registered account required to claim a spot.');
         setAuthModalOpen(true);
         return;
       }
 
-      // 2. Strict Email Verification Gate
-      const verified = await authService.isEmailVerified();
-      if (!verified) {
-        setStep('details');
-        setError('Please verify your email address before creating an entry.');
-        return;
-      }
-
-      // 3. Ensure Razorpay Checkout SDK is loaded
+      // 2. Ensure Razorpay Checkout SDK is loaded
       const sdkLoaded = await loadRazorpayScript();
       if (!sdkLoaded) {
         throw new Error('Razorpay Checkout SDK could not be loaded. Please check your network connection.');
@@ -276,31 +260,22 @@ function CreateEntryContent() {
           </p>
         </div>
 
-        {/* Auth Notice if not logged in */}
-        {!currentUser && (
+        {/* Auth Notice if guest or not logged in */}
+        {!isRegistered && (
           <div className="mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <Lock className="w-5 h-5 text-[#E5C158] shrink-0" />
               <div className="text-xs text-slate-200">
-                <strong>Authentication Required:</strong> You need a verified founder account to claim a spot.
+                <strong>Create an account to continue:</strong> You need a registered founder account to claim a spot.
               </div>
             </div>
             <button
+              type="button"
               onClick={() => setAuthModalOpen(true)}
               className="px-4 py-2 rounded-xl gold-gradient-button text-black font-bold text-xs shrink-0 cursor-pointer"
             >
-              Sign In / Register
+              Register / Sign In
             </button>
-          </div>
-        )}
-
-        {/* Verification Notice if logged in but unverified */}
-        {currentUser && !isEmailVerified && (
-          <div className="mb-6 p-4 rounded-2xl bg-rose-500/10 border border-rose-500/25 flex items-center gap-3 text-xs text-rose-300">
-            <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
-            <div>
-              <strong>Email Verification Pending:</strong> Please check your email (<strong>{currentUser.email}</strong>) and confirm your address before creating an entry.
-            </div>
           </div>
         )}
 
@@ -493,7 +468,7 @@ function CreateEntryContent() {
 
             <button
               type="submit"
-              disabled={!isValidBid || !currentUser || !isEmailVerified}
+              disabled={!isValidBid || !isRegistered}
               className="w-full py-4 rounded-xl gold-gradient-button text-black font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span>Review Details & Continue</span>

@@ -16,9 +16,14 @@ export async function POST(req: Request) {
           { status: 401 }
         );
       }
-      if (!authData.user.email_confirmed_at) {
+      const isAnon = Boolean(
+        authData.user.is_anonymous ||
+        authData.user.app_metadata?.provider === 'anonymous' ||
+        !authData.user.email
+      );
+      if (isAnon) {
         return NextResponse.json(
-          { error: 'Email verification required. Please confirm your email address before placing a bid.' },
+          { error: 'Registered account required. Guest users cannot place bids or claim spots.' },
           { status: 403 }
         );
       }

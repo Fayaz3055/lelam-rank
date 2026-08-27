@@ -25,7 +25,6 @@ export default function BidModal({ entry, isOpen, onClose, onSuccess }: BidModal
   const [bidderName, setBidderName] = useState('');
   const [bidderEmail, setBidderEmail] = useState('');
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-  const [isEmailVerified, setIsEmailVerified] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [resultRank, setResultRank] = useState<number>(1);
   const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -44,12 +43,8 @@ export default function BidModal({ entry, isOpen, onClose, onSuccess }: BidModal
     const user = await authService.getCurrentUser();
     setCurrentUser(user);
     if (user) {
-      setBidderName(user.full_name || '');
+      setBidderName(user.username ? `@${user.username}` : user.full_name || '');
       setBidderEmail(user.email || '');
-      const verified = await authService.isEmailVerified();
-      setIsEmailVerified(verified);
-    } else {
-      setIsEmailVerified(false);
     }
   };
 
@@ -65,22 +60,17 @@ export default function BidModal({ entry, isOpen, onClose, onSuccess }: BidModal
 
   if (!isOpen || !entry) return null;
 
+  const isRegistered = authService.isRegisteredUser(currentUser);
+
   const handleProceedToConfirm = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    // 1. Enforce Authentication Gate
+    // 1. Enforce Authentication Gate (Must be registered, not guest)
     const user = await authService.getCurrentUser();
-    if (!user) {
-      setError('You must sign in or register before placing a bid.');
+    if (!user || !authService.isRegisteredUser(user)) {
+      setError('Create an account to continue. Registered account required to place bids.');
       setAuthModalOpen(true);
-      return;
-    }
-
-    // 2. Enforce Email Verification Gate
-    const verified = await authService.isEmailVerified();
-    if (!verified) {
-      setError('Please verify your email address before placing a bid. Check your inbox for the confirmation link.');
       return;
     }
 
@@ -98,17 +88,10 @@ export default function BidModal({ entry, isOpen, onClose, onSuccess }: BidModal
 
     try {
       const user = await authService.getCurrentUser();
-      if (!user) {
+      if (!user || !authService.isRegisteredUser(user)) {
         setStep('input');
-        setError('You must be signed in to place a bid.');
+        setError('Create an account to continue. Registered account required to place bids.');
         setAuthModalOpen(true);
-        return;
-      }
-
-      const verified = await authService.isEmailVerified();
-      if (!verified) {
-        setStep('input');
-        setError('Please verify your email address before placing a bid.');
         return;
       }
 
@@ -226,13 +209,13 @@ export default function BidModal({ entry, isOpen, onClose, onSuccess }: BidModal
             </button>
           )}
 
-          {/* Auth Notice if not logged in */}
-          {!currentUser && step === 'input' && (
+          {/* Auth Notice if guest or not logged in */}
+          {!isRegistered && step === 'input' && (
             <div className="mb-5 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
                 <Lock className="w-4 h-4 text-[#E5C158] shrink-0" />
                 <span className="text-xs text-slate-200">
-                  You must be signed in to place a verified bid.
+                  <strong>Create an account to continue:</strong> A registered account is required to place a verified bid.
                 </span>
               </div>
               <button
@@ -240,18 +223,8 @@ export default function BidModal({ entry, isOpen, onClose, onSuccess }: BidModal
                 onClick={() => setAuthModalOpen(true)}
                 className="px-3 py-1.5 rounded-lg gold-gradient-button text-black font-bold text-[11px] shrink-0 cursor-pointer"
               >
-                Sign In
+                Register / Sign In
               </button>
-            </div>
-          )}
-
-          {/* Verification Notice if logged in but unverified */}
-          {currentUser && !isEmailVerified && step === 'input' && (
-            <div className="mb-5 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/25 flex items-center gap-2.5 text-xs text-rose-300">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-              <span>
-                Please verify your email (<strong>{currentUser.email}</strong>) before placing a bid.
-              </span>
             </div>
           )}
 
@@ -364,7 +337,7 @@ export default function BidModal({ entry, isOpen, onClose, onSuccess }: BidModal
 
                 <button
                   type="submit"
-                  disabled={!isValidBid}
+                  disabled={!isValidBid || !isRegistered}
                   className="w-full py-3 rounded-xl gold-gradient-button text-black font-bold text-sm flex items-center justify-center gap-2 mt-4 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <span>Review Bid</span>

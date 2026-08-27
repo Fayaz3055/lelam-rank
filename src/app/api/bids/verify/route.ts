@@ -31,9 +31,14 @@ export async function POST(req: Request) {
           { status: 401 }
         );
       }
-      if (!authData.user.email_confirmed_at) {
+      const isAnon = Boolean(
+        authData.user.is_anonymous ||
+        authData.user.app_metadata?.provider === 'anonymous' ||
+        !authData.user.email
+      );
+      if (isAnon) {
         return NextResponse.json(
-          { error: 'Email verification required before recording a verified bid.' },
+          { error: 'Registered account required. Guest users cannot verify bids or create entries.' },
           { status: 403 }
         );
       }

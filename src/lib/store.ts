@@ -300,6 +300,7 @@ const STORAGE_KEYS = {
   ACTIVITY: 'lelam_rank_activity_v1',
   PAYMENTS: 'lelam_rank_payments_v1',
   CURRENT_USER: 'lelam_rank_user_v1',
+  USERS: 'lelam_rank_users_v1',
 };
 
 // Only enable realistic Kerala seed data when explicitly enabled via environment variable
@@ -310,8 +311,13 @@ const INITIAL_ACTIVITY: ActivityEvent[] = isSeedEnabled ? SEED_ACTIVITY : [];
 const INITIAL_PAYMENTS: Payment[] = isSeedEnabled ? SEED_PAYMENTS : [];
 
 class LelamStore {
+  private memoryStore = new Map<string, unknown>();
+
   private getStored<T>(key: string, defaultValue: T): T {
     if (typeof window === 'undefined') {
+      if (this.memoryStore.has(key)) {
+        return this.memoryStore.get(key) as T;
+      }
       return defaultValue;
     }
     try {
@@ -324,7 +330,10 @@ class LelamStore {
   }
 
   private setStored<T>(key: string, value: T): void {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined') {
+      this.memoryStore.set(key, value);
+      return;
+    }
     try {
       localStorage.setItem(key, JSON.stringify(value));
       // Dispatch custom event so reactive UI components across pages update immediately
@@ -589,6 +598,15 @@ class LelamStore {
 
   public setCurrentUser(user: UserProfile): void {
     this.setStored(STORAGE_KEYS.CURRENT_USER, user);
+  }
+
+  public getUsers(): UserProfile[] {
+    return this.getStored<UserProfile[]>(STORAGE_KEYS.USERS, []);
+  }
+
+  public addUser(user: UserProfile): void {
+    const users = this.getUsers();
+    this.setStored(STORAGE_KEYS.USERS, [...users.filter((u) => u.id !== user.id), user]);
   }
 }
 
