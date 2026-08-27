@@ -15,32 +15,48 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_profiles_username ON public.profiles(username);
-
 -- Trigger to automatically create profile when user signs up via Supabase Auth
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_raw_username TEXT;
+  v_username TEXT;
+  v_full_name TEXT;
 BEGIN
   -- Anonymous users / guests do not have emails and should not create permanent registered profiles
   IF COALESCE(NEW.is_anonymous, FALSE) IS TRUE OR NEW.email IS NULL THEN
     RETURN NEW;
   END IF;
 
+  v_raw_username := LOWER(NULLIF(TRIM(COALESCE(NEW.raw_user_meta_data->>'username', '')), ''));
+  v_full_name := COALESCE(NEW.raw_user_meta_data->>'full_name', v_raw_username, split_part(NEW.email, '@', 1));
+
+  IF v_raw_username IS NULL THEN
+    v_username := LOWER(split_part(NEW.email, '@', 1));
+  ELSE
+    v_username := v_raw_username;
+  END IF;
+
   INSERT INTO public.profiles (id, email, username, full_name, role)
   VALUES (
     NEW.id,
     NEW.email,
-    LOWER(COALESCE(NEW.raw_user_meta_data->>'username', split_part(NEW.email, '@', 1))),
-    COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'username', split_part(NEW.email, '@', 1)),
+    v_username,
+    v_full_name,
     'user' -- Always enforce default role = 'user' on signup
   )
   ON CONFLICT (id) DO UPDATE
   SET email = EXCLUDED.email,
       username = COALESCE(EXCLUDED.username, public.profiles.username),
       full_name = COALESCE(EXCLUDED.full_name, public.profiles.full_name);
+
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
