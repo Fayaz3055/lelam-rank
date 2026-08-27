@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-primary: #08090c;
+    --bg-surface: #0f1117;
+    --bg-card: #141720;
+    --bg-card-hover: #1b1e2a;
+    --text-primary: #f8f9fa;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --gold-primary: #d4af37;
+    --gold-light: #f3d374;
+    --gold-dark: #aa8420;
+    --gold-muted: rgba(212, 175, 55, 0.15);
+    --border-subtle: rgba(255, 255, 255, 0.07);
+    --border-gold: rgba(212, 175, 55, 0.25);
+  }
+
+  body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    overflow-x: hidden;
+  }
+}
+
+/* Custom Luxury Gradients & Utilities */
+.gold-gradient-text {
+  background: linear-gradient(135deg, #fff2cc 0%, #d4af37 50%, #aa8420 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gold-gradient-bg {
+  background: linear-gradient(135deg, #d4af37 0%, #c29d2b 100%);
+}
+
+.gold-gradient-button {
+  background: linear-gradient(135deg, #e5c158 0%, #c59d28 100%);
+  transition: all 0.2s ease-in-out;
+}
+
+.gold-gradient-button:hover {
+  background: linear-gradient(135deg, #f0cf6f 0%, #d4aa33 100%);
+  box-shadow: 0 0 20px rgba(212, 175, 55, 0.35);
+}
+
+.dark-card {
+  background-color: #10121a;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.dark-card:hover {
+  border-color: rgba(212, 175, 55, 0.2);
+}
+
+.gold-card {
+  background: linear-gradient(180deg, #151822 0%, #0d0f15 100%);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  box-shadow: 0 10px 40px -10px rgba(212, 175, 55, 0.15);
+}
+
+.glass-nav {
+  background: rgba(8, 9, 12, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.subtle-grid {
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+}
+
+/* Pulse animation for live indicators */
+@keyframes goldPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.15);
+  }
+}
+
+.animate-gold-pulse {
+  animation: goldPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #08090c;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e2230;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2e3448;
+}
