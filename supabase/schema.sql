@@ -7,7 +7,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- 1. Profiles Table (extends Supabase Auth users)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
-  email TEXT NOT NULL UNIQUE,
+  email TEXT UNIQUE,
   username TEXT UNIQUE,
   full_name TEXT,
   role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
@@ -21,6 +21,11 @@ CREATE INDEX IF NOT EXISTS idx_profiles_username ON public.profiles(username);
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
+  -- Anonymous users / guests do not have emails and should not create permanent registered profiles
+  IF COALESCE(NEW.is_anonymous, FALSE) IS TRUE OR NEW.email IS NULL THEN
+    RETURN NEW;
+  END IF;
+
   INSERT INTO public.profiles (id, email, username, full_name, role)
   VALUES (
     NEW.id,
