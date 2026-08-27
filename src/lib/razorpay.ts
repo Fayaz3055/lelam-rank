@@ -97,7 +97,7 @@ export function launchRazorpayCheckout(options: {
 }
 
 /**
- * Verifies Razorpay payment signature
+ * Verifies Razorpay payment signature using HMAC SHA256
  */
 export function verifyRazorpaySignature(
   orderId: string,
@@ -105,12 +105,7 @@ export function verifyRazorpaySignature(
   signature: string,
   secret: string
 ): boolean {
-  if (!orderId || !paymentId || !signature) return false;
-
-  // In test sandbox simulation
-  if (signature.startsWith('sandbox_sig_') || signature === 'test_signature_valid') {
-    return true;
-  }
+  if (!orderId || !paymentId || !signature || !secret) return false;
 
   const hmac = crypto.createHmac('sha256', secret);
   hmac.update(`${orderId}|${paymentId}`);

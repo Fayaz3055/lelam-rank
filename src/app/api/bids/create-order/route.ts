@@ -5,7 +5,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { amount, entryId, userId, userEmail } = body;
+    const { amount, entryId, entryName, userId, userEmail } = body;
 
     const supabase = await createServerSupabaseClient();
     if (supabase) {
@@ -32,35 +32,25 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!entryId) {
-      return NextResponse.json(
-        { error: 'Entry ID is required.' },
-        { status: 400 }
-      );
+    // If bidding on an existing entry, validate against holding bid
+    if (entryId && entryId !== 'new_entry') {
+      const entries = await dbService.getLeaderboardEntries();
+      const targetEntry = entries.find((e) => e.id === entryId || e.slug === entryId);
+      if (targetEntry && numericAmount <= targetEntry.current_bid) {
+        return NextResponse.json(
+          {
+            error: `Bid must be strictly greater than current holding bid (₹${targetEntry.current_bid.toLocaleString('en-IN')})`,
+          },
+          { status: 400 }
+        );
+      }
     }
 
-    // Validate against current entry holding bid
-    const entries = await dbService.getLeaderboardEntries();
-    const targetEntry = entries.find((e) => e.id === entryId);
-    if (targetEntry && numericAmount <= targetEntry.current_bid) {
-      return NextResponse.json(
-        {
-          error: `Bid must be strictly greater than current bid (₹${targetEntry.current_bid.toLocaleString('en-IN')})`,
-        },
-        { status: 400 }
-      );
-    }
+    const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
+    const keySecret = process.env.RAZORPAY_KEY_SECRET || '';
+    const publicKeyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || keyId || 'rzp_test_placeholder';
 
-    const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_sandbox';
-    const keySecret = process.env.RAZORPAY_KEY_SECRET || 'test_secret_sandbox';
-
-    // If live Razorpay API credentials exist, create order via Razorpay API
-    if (
-      keyId &&
-      keySecret &&
-      !keyId.includes('placeholder') &&
-      !keyId.includes('sandbox')
-    ) {
+    if (keyId && keySecret && !keyId.includes('placeholder') && !keySecret.includes('placeholder')) {
       const authHeader = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
       const rzpRes = await fetch('https://api.razorpay.com/v1/orders', {
         method: 'POST',
@@ -69,46 +59,49 @@ export async function POST(req: Request) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          amount: Math.round(numericAmount * 100), // in paise
+          amount: Math.round(numericAmount * 100), // in paise (e.g. ₹500 = 50000 paise)
           currency: 'INR',
           receipt: `rcpt_${Date.now()}`,
           notes: {
-            entryId,
-            entryName: targetEntry?.name || 'New Entry',
-            userId: userId || 'anonymous',
+            entryId: entryId || 'new_entry',
+            entryName: entryName || 'New Entry',
+            userId: userId || '',
             userEmail: userEmail || '',
           },
         }),
       });
 
-      if (rzpRes.ok) {
-        const orderData = await rzpRes.json();
-        return NextResponse.json({
-          success: true,
-          orderId: orderData.id,
-          amount: orderData.amount,
-          currency: orderData.currency,
-          keyId,
-          isTestMode: keyId.startsWith('rzp_test'),
-        });
+      if (!rzpRes.ok) {
+        const errData = await rzpRes.json().catch(() => ({}));
+        const errMsg = errData.error?.description || errData.error?.reason || `Razorpay order creation failed (HTTP ${rzpRes.status})`;
+        console.error('[Razorpay Order Creation Failed]:', errMsg);
+        return NextResponse.json({ error: errMsg }, { status: 400 });
       }
+
+      const orderData = await rzpRes.json();
+      return NextResponse.json({
+        success: true,
+        orderId: orderData.id,
+        amount: orderData.amount, // in paise
+        currency: orderData.currency,
+        keyId: publicKeyId,
+        isTestMode: keyId.startsWith('rzp_test'),
+      });
     }
 
-    // Test mode / sandbox order generation
-    const orderId = `order_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    // In local development before Razorpay keys are configured in .env.local
+    const orderId = `order_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     return NextResponse.json({
       success: true,
       orderId,
       amount: Math.round(numericAmount * 100),
       currency: 'INR',
-      keyId,
+      keyId: publicKeyId,
       isTestMode: true,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('[API create-order error]:', error);
-    return NextResponse.json(
-      { error: 'Internal server error while creating payment order.' },
-      { status: 500 }
-    );
+    const message = error instanceof Error ? error.message : 'Internal server error while creating payment order.';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

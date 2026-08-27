@@ -129,45 +129,38 @@ export default function BidModal({ entry, isOpen, onClose, onSuccess }: BidModal
         throw new Error(orderData.error || 'Failed to create payment order.');
       }
 
-      // 2. Launch checkout if Razorpay SDK loaded and real key exists
-      const isSandboxDummy = !orderData.keyId || orderData.keyId.includes('sandbox') || orderData.keyId.includes('dummy');
+      // 2. Ensure Razorpay Checkout SDK is loaded
+      const sdkLoaded = await loadRazorpayScript();
+      if (!sdkLoaded) {
+        throw new Error('Razorpay Checkout SDK could not be loaded. Please check your network connection.');
+      }
 
-      if (!isSandboxDummy && typeof window !== 'undefined' && (window as unknown as { Razorpay: unknown }).Razorpay) {
-        launchRazorpayCheckout({
-          orderId: orderData.orderId,
-          amount: orderData.amount,
-          keyId: orderData.keyId,
-          name: 'LELAM RANK',
-          description: `Bid for ${entry.name}`,
-          prefill: {
-            name: bidderName || user.full_name || entry.name,
-            email: user.email || bidderEmail,
-          },
-          onSuccess: async (rzpResp) => {
-            await verifyAndCompleteBid({
-              razorpay_order_id: rzpResp.razorpay_order_id,
-              razorpay_payment_id: rzpResp.razorpay_payment_id,
-              razorpay_signature: rzpResp.razorpay_signature,
-              userId: user.id,
-            });
-          },
-          onDismiss: () => {
-            setStep('confirm');
-          },
-        });
-      } else {
-        // Test sandbox automated verification
-        setTimeout(async () => {
+      // 3. Launch real Razorpay Checkout modal
+      launchRazorpayCheckout({
+        orderId: orderData.orderId,
+        amount: orderData.amount,
+        keyId: orderData.keyId,
+        name: 'LELAM RANK',
+        description: `Verified bid for ${entry.name}`,
+        prefill: {
+          name: bidderName || user.full_name || entry.name,
+          email: user.email || bidderEmail,
+        },
+        onSuccess: async (rzpResp) => {
           await verifyAndCompleteBid({
-            razorpay_order_id: orderData.orderId,
-            razorpay_payment_id: `pay_test_${Date.now()}`,
-            razorpay_signature: 'sandbox_sig_valid',
+            razorpay_order_id: rzpResp.razorpay_order_id,
+            razorpay_payment_id: rzpResp.razorpay_payment_id,
+            razorpay_signature: rzpResp.razorpay_signature,
             userId: user.id,
           });
-        }, 1000);
-      }
+        },
+        onDismiss: () => {
+          setStep('confirm');
+          setError('Payment was cancelled. Your bid was not placed.');
+        },
+      });
     } catch (err: unknown) {
-      setStep('input');
+      setStep('confirm');
       const message = err instanceof Error ? err.message : 'Payment could not be processed.';
       setError(message);
     }

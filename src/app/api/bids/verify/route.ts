@@ -12,6 +12,7 @@ export async function POST(req: Request) {
       razorpay_payment_id,
       razorpay_signature,
       entryId,
+      entryData,
       amount,
       bidderId,
       bidderName,
@@ -39,13 +40,6 @@ export async function POST(req: Request) {
       verifiedBidderId = authData.user.id;
     }
 
-    if (!entryId) {
-      return NextResponse.json(
-        { error: 'Entry ID is required for bid verification.' },
-        { status: 400 }
-      );
-    }
-
     const numericAmount = Number(amount);
     if (!numericAmount || numericAmount < 50) {
       return NextResponse.json(
@@ -54,7 +48,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const secret = process.env.RAZORPAY_KEY_SECRET || 'test_secret_sandbox';
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return NextResponse.json(
+        { error: 'Missing Razorpay payment identifiers (order_id, payment_id, signature).' },
+        { status: 400 }
+      );
+    }
+
+    const secret = process.env.RAZORPAY_KEY_SECRET || '';
     const isValid = verifyRazorpaySignature(
       razorpay_order_id,
       razorpay_payment_id,
@@ -69,18 +70,61 @@ export async function POST(req: Request) {
       );
     }
 
-    // Atomically place verified bid in database
+    // 1. Scenario A: Claiming a new spot (Entry Creation)
+    if (entryData && (entryId === 'new_entry' || !entryId)) {
+      const result = await dbService.createEntry({
+        name: entryData.name,
+        slug: entryData.slug,
+        description: entryData.description,
+        logo_url: entryData.logo_url,
+        website_url: entryData.website_url,
+        social_url: entryData.social_url,
+        initial_bid: numericAmount,
+        owner_id: verifiedBidderId,
+        bidder_name: bidderName || entryData.name,
+        visibility: visibility || 'public',
+      });
+
+      if (bidderEmail) {
+        emailService.sendBidConfirmedEmail({
+          toEmail: bidderEmail,
+          entryName: result.entry.name,
+          entrySlug: result.entry.slug,
+          bidAmount: numericAmount,
+          newRank: result.rank,
+        }).catch(console.error);
+      }
+
+      return NextResponse.json({
+        success: true,
+        verified: true,
+        entry: result.entry,
+        rank: result.rank,
+        orderId: razorpay_order_id,
+        paymentId: razorpay_payment_id,
+        message: 'Spot claimed and payment verified successfully.',
+      });
+    }
+
+    // 2. Scenario B: Outbidding / Placing a verified bid on an existing entry
+    if (!entryId) {
+      return NextResponse.json(
+        { error: 'Entry ID or entry registration data is required.' },
+        { status: 400 }
+      );
+    }
+
     const result = await dbService.placeVerifiedBid({
       entryId,
       amount: numericAmount,
       bidder_id: verifiedBidderId,
       bidder_name: bidderName,
       visibility: visibility || 'public',
+      paymentId: razorpay_payment_id,
     });
 
     const entry = await dbService.getEntryBySlug(entryId) || (await dbService.getLeaderboardEntries()).find(e => e.id === entryId);
 
-    // Send confirmation email asynchronously
     if (bidderEmail && entry) {
       emailService.sendBidConfirmedEmail({
         toEmail: bidderEmail,

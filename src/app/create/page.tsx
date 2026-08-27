@@ -19,6 +19,7 @@ import confetti from 'canvas-confetti';
 import { dbService } from '@/services/db';
 import { authService } from '@/services/auth';
 import { calculateEstimatedRank, formatINR } from '@/lib/ranking';
+import { loadRazorpayScript, launchRazorpayCheckout } from '@/lib/razorpay';
 import ShareModal from '@/components/share/ShareModal';
 import AuthModal from '@/components/auth/AuthModal';
 import { Entry, UserProfile } from '@/types';
@@ -40,46 +41,57 @@ function CreateEntryContent() {
 
   const [step, setStep] = useState<'details' | 'confirm' | 'paying' | 'success'>('details');
   const [error, setError] = useState<string | null>(null);
+  const [estimatedRank, setEstimatedRank] = useState<number>(1);
   const [createdEntry, setCreatedEntry] = useState<Entry | null>(null);
   const [createdRank, setCreatedRank] = useState<number>(1);
   const [shareModalOpen, setShareModalOpen] = useState(false);
-  const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-  const [isEmailVerified, setIsEmailVerified] = useState<boolean>(false);
-  const [allEntries, setAllEntries] = useState<Entry[]>([]);
 
-  const loadUserData = async () => {
-    const list = await dbService.getLeaderboardEntries();
-    setAllEntries(list);
+  // Real Auth State
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+
+  useEffect(() => {
+    loadUser();
+    loadRazorpayScript().catch(console.error);
+  }, []);
+
+  const loadUser = async () => {
     const user = await authService.getCurrentUser();
     setCurrentUser(user);
     if (user) {
-      setBidderName(user.full_name || '');
       const verified = await authService.isEmailVerified();
       setIsEmailVerified(verified);
-    } else {
-      setIsEmailVerified(false);
+      if (!bidderName && user.full_name) {
+        setBidderName(user.full_name);
+      }
     }
   };
 
+  const initialBidNum = parseFloat(initialBidStr) || 0;
+  const isValidBid = initialBidNum >= 50;
+
   useEffect(() => {
-    loadUserData();
-  }, []);
+    async function updateEstimatedRank() {
+      if (isValidBid) {
+        const entries = await dbService.getLeaderboardEntries();
+        const est = calculateEstimatedRank(initialBidNum, entries);
+        setEstimatedRank(est);
+      }
+    }
+    updateEstimatedRank();
+  }, [initialBidNum, isValidBid]);
 
   const handleNameChange = (val: string) => {
     setName(val);
     if (!initialSlugParam) {
-      const generated = val
+      const autoSlug = val
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
-        .replace(/(^-|-$)/g, '');
-      setSlug(generated);
+        .replace(/(^-|-$)+/g, '');
+      setSlug(autoSlug);
     }
   };
-
-  const initialBidNum = parseInt(initialBidStr.replace(/[^0-9]/g, ''), 10) || 0;
-  const isValidBid = initialBidNum >= 50;
-  const estimatedRank = calculateEstimatedRank(initialBidNum, allEntries);
 
   const handleSubmitDetails = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,13 +112,18 @@ function CreateEntryContent() {
       return;
     }
 
-    if (!name.trim() || !description.trim()) {
-      setError('Please provide a name and short description.');
+    if (!name.trim()) {
+      setError('Please enter a name for your startup / product.');
       return;
     }
 
     if (!slug.trim()) {
-      setError('Please provide a URL slug.');
+      setError('Please choose a valid URL slug.');
+      return;
+    }
+
+    if (!description.trim()) {
+      setError('Please provide a short pitch or description.');
       return;
     }
 
@@ -129,6 +146,7 @@ function CreateEntryContent() {
     setError(null);
 
     try {
+      // 1. Strict Auth Gate
       const user = await authService.getCurrentUser();
       if (!user) {
         setStep('details');
@@ -137,6 +155,7 @@ function CreateEntryContent() {
         return;
       }
 
+      // 2. Strict Email Verification Gate
       const verified = await authService.isEmailVerified();
       if (!verified) {
         setStep('details');
@@ -144,34 +163,98 @@ function CreateEntryContent() {
         return;
       }
 
-      const result = await dbService.createEntry({
-        name: name.trim(),
-        slug: slug.trim().toLowerCase(),
-        description: description.trim(),
-        logo_url: logoUrl.trim() || undefined,
-        website_url: websiteUrl.trim() || undefined,
-        social_url: socialUrl.trim() || undefined,
-        initial_bid: initialBidNum,
-        owner_id: user.id, // Strictly authentic user ID only
-        bidder_name: bidderName || name,
-        visibility,
+      // 3. Ensure Razorpay Checkout SDK is loaded
+      const sdkLoaded = await loadRazorpayScript();
+      if (!sdkLoaded) {
+        throw new Error('Razorpay Checkout SDK could not be loaded. Please check your network connection.');
+      }
+
+      // 4. Create Order on Server
+      const orderRes = await fetch('/api/bids/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: initialBidNum,
+          entryId: 'new_entry',
+          entryName: name.trim(),
+          userId: user.id,
+          userEmail: user.email,
+        }),
       });
 
-      setCreatedEntry(result.entry);
-      setCreatedRank(result.rank);
-      setStep('success');
+      const orderData = await orderRes.json();
+      if (!orderRes.ok || !orderData.success) {
+        throw new Error(orderData.error || 'Failed to create Razorpay payment order.');
+      }
 
-      try {
-        confetti({
-          particleCount: 100,
-          spread: 80,
-          origin: { y: 0.6 },
-          colors: ['#D4AF37', '#E5C158', '#FFFFFF', '#FFA000'],
-        });
-      } catch {}
+      // 5. Launch Razorpay Checkout Modal
+      launchRazorpayCheckout({
+        orderId: orderData.orderId,
+        amount: orderData.amount,
+        keyId: orderData.keyId,
+        name: 'LELAM RANK',
+        description: `Initial verified bid for ${name.trim()}`,
+        prefill: {
+          name: bidderName || user.full_name || name.trim(),
+          email: user.email,
+        },
+        onSuccess: async (rzpResp) => {
+          try {
+            // 6. Verify Payment Signature and Create Entry on Server
+            const verifyRes = await fetch('/api/bids/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                razorpay_order_id: rzpResp.razorpay_order_id,
+                razorpay_payment_id: rzpResp.razorpay_payment_id,
+                razorpay_signature: rzpResp.razorpay_signature,
+                entryId: 'new_entry',
+                amount: initialBidNum,
+                entryData: {
+                  name: name.trim(),
+                  slug: slug.trim().toLowerCase(),
+                  description: description.trim(),
+                  logo_url: logoUrl.trim() || undefined,
+                  website_url: websiteUrl.trim() || undefined,
+                  social_url: socialUrl.trim() || undefined,
+                  bidder_name: bidderName || name.trim(),
+                  visibility,
+                },
+                bidderEmail: user.email,
+              }),
+            });
+
+            const verifyData = await verifyRes.json();
+            if (!verifyRes.ok || !verifyData.success) {
+              throw new Error(verifyData.error || 'Payment signature verification failed.');
+            }
+
+            setCreatedEntry(verifyData.entry);
+            setCreatedRank(verifyData.rank || 1);
+            setStep('success');
+
+            try {
+              confetti({
+                particleCount: 100,
+                spread: 80,
+                origin: { y: 0.6 },
+                colors: ['#D4AF37', '#E5C158', '#FFFFFF', '#FFA000'],
+              });
+            } catch {}
+          } catch (verifyErr: unknown) {
+            setStep('confirm');
+            const message = verifyErr instanceof Error ? verifyErr.message : 'Payment verification failed.';
+            setError(message);
+          }
+        },
+        onDismiss: () => {
+          setStep('confirm');
+          setError('Payment was cancelled. Your spot was not created.');
+        },
+      });
     } catch (err: unknown) {
-      setStep('details');
-      const message = err instanceof Error ? err.message : 'Could not create entry.';
+      setStep('confirm');
+      const message = err instanceof Error ? err.message : 'Could not initialize payment checkout.';
       setError(message);
     }
   };
@@ -252,59 +335,50 @@ function CreateEntryContent() {
 
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                  Public URL Slug *
+                  Leaderboard URL Slug *
                 </label>
-                <div className="flex items-center bg-[#141720] border border-white/[0.1] rounded-xl px-4 py-2.5 text-xs text-slate-400 focus-within:border-amber-500/50">
-                  <span className="font-mono text-slate-400">lelamrank.in/</span>
+                <div className="flex items-center rounded-xl bg-[#141720] border border-white/[0.1] px-4 py-3 text-sm text-slate-400 focus-within:border-amber-500/50">
+                  <span className="shrink-0 text-slate-500">lelamrank.in/</span>
                   <input
                     type="text"
                     required
                     value={slug}
-                    onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
+                    onChange={(e) =>
+                      setSlug(
+                        e.target.value
+                          .toLowerCase()
+                          .replace(/[^a-z0-9-]/g, '')
+                      )
+                    }
                     placeholder="my-startup"
-                    className="flex-1 bg-transparent text-white font-mono font-semibold focus:outline-none pl-1"
+                    className="w-full bg-transparent border-0 text-white placeholder:text-slate-600 focus:outline-none ml-0.5"
                   />
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                  One-line Pitch / Short Description *
+                  One-Line Description / Value Proposition *
                 </label>
                 <textarea
                   required
-                  rows={3}
+                  rows={2}
+                  maxLength={180}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="e.g. Asynchronous collaboration suite built for fast-moving distributed engineering teams in Kerala."
-                  className="w-full bg-[#141720] border border-white/[0.1] rounded-xl p-4 text-xs sm:text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500/50"
+                  placeholder="Tell Kerala in one sentence what you are building or selling..."
+                  className="w-full bg-[#141720] border border-white/[0.1] rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500/50 resize-none"
                 />
+                <div className="text-right text-[10px] text-slate-500 mt-1">
+                  {description.length}/180
+                </div>
               </div>
             </div>
 
             <div className="space-y-4 pt-4 border-t border-white/[0.06]">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 pb-2 border-b border-white/[0.06]">
-                Optional Links & Logo
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[#E5C158] pb-2 border-b border-white/[0.06]">
+                Online Presence (Optional)
               </h3>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                  Logo / Avatar Image URL
-                </label>
-                <div className="relative">
-                  <ImageIcon className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
-                  <input
-                    type="url"
-                    value={logoUrl}
-                    onChange={(e) => setLogoUrl(e.target.value)}
-                    placeholder="https://yourdomain.com/logo.png"
-                    className="w-full bg-[#141720] border border-white/[0.1] rounded-xl pl-10 pr-4 py-3 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500/50"
-                  />
-                </div>
-                <span className="text-[10px] text-slate-400 mt-1 block">
-                  Leave empty to generate a clean branded initials badge automatically.
-                </span>
-              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -317,27 +391,40 @@ function CreateEntryContent() {
                       type="url"
                       value={websiteUrl}
                       onChange={(e) => setWebsiteUrl(e.target.value)}
-                      placeholder="https://yourdomain.com"
-                      className="w-full bg-[#141720] border border-white/[0.1] rounded-xl pl-10 pr-4 py-3 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500/50"
+                      placeholder="https://yourcompany.com"
+                      className="w-full bg-[#141720] border border-white/[0.1] rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500/50"
                     />
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Instagram / Social Link
+                    Logo / Avatar Image URL
                   </label>
                   <div className="relative">
-                    <Share2 className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+                    <ImageIcon className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                     <input
                       type="url"
-                      value={socialUrl}
-                      onChange={(e) => setSocialUrl(e.target.value)}
-                      placeholder="https://instagram.com/yourhandle"
-                      className="w-full bg-[#141720] border border-white/[0.1] rounded-xl pl-10 pr-4 py-3 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500/50"
+                      value={logoUrl}
+                      onChange={(e) => setLogoUrl(e.target.value)}
+                      placeholder="https://.../logo.png"
+                      className="w-full bg-[#141720] border border-white/[0.1] rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500/50"
                     />
                   </div>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Social / Founder Link (X, LinkedIn, Instagram)
+                </label>
+                <input
+                  type="url"
+                  value={socialUrl}
+                  onChange={(e) => setSocialUrl(e.target.value)}
+                  placeholder="https://x.com/yourhandle"
+                  className="w-full bg-[#141720] border border-white/[0.1] rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500/50"
+                />
               </div>
             </div>
 
@@ -347,202 +434,208 @@ function CreateEntryContent() {
               </h3>
 
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-medium text-slate-300">
-                    Your Bid (₹) *
-                  </label>
-                  <span className="text-[11px] text-amber-400 font-mono">
-                    Minimum: ₹50 (No Maximum)
-                  </span>
-                </div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Initial Bid Amount (₹ INR) *
+                </label>
                 <div className="relative">
-                  <span className="absolute left-3.5 top-3.5 text-xl font-bold text-slate-400">
+                  <span className="absolute left-4 top-3.5 text-lg font-bold text-[#E5C158]">
                     ₹
                   </span>
                   <input
                     type="number"
-                    min={50}
-                    step={1}
+                    min="50"
+                    step="1"
                     required
                     value={initialBidStr}
                     onChange={(e) => setInitialBidStr(e.target.value)}
-                    placeholder="500"
-                    className="w-full bg-[#141720] border border-white/[0.1] rounded-xl pl-10 pr-4 py-3.5 text-2xl font-bold text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500/50"
+                    className="w-full bg-[#141720] border border-white/[0.1] rounded-xl pl-10 pr-4 py-3 text-xl font-mono font-bold text-white focus:outline-none focus:border-amber-500/50"
+                  />
+                </div>
+                <div className="flex items-center justify-between text-xs text-slate-400 mt-2">
+                  <span>Minimum entry bid: ₹50</span>
+                  {isValidBid && (
+                    <span className="text-[#E5C158] font-bold">
+                      Estimated Live Rank: #{estimatedRank}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                    Bidder Display Name
+                  </label>
+                  <input
+                    type="text"
+                    value={bidderName}
+                    onChange={(e) => setBidderName(e.target.value)}
+                    placeholder={currentUser?.full_name || 'Founder name or Company name'}
+                    className="w-full bg-[#141720] border border-white/[0.1] rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500/50"
                   />
                 </div>
 
-                <div className="mt-3 flex items-center justify-between text-xs">
-                  {isValidBid ? (
-                    <div className="flex items-center justify-between w-full">
-                      <span className="text-emerald-400 flex items-center gap-1 font-semibold">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        Valid bid amount
-                      </span>
-                      <span className="bg-amber-500/10 border border-amber-500/20 text-[#E5C158] px-2.5 py-1 rounded-md font-bold">
-                        Estimated Rank: #{estimatedRank}
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-rose-400 flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5" />
-                      Minimum required bid is ₹50
-                    </span>
-                  )}
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                    Bidder Identity Visibility
+                  </label>
+                  <select
+                    value={visibility}
+                    onChange={(e) => setVisibility(e.target.value as 'public' | 'anonymous')}
+                    className="w-full bg-[#141720] border border-white/[0.1] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/50"
+                  >
+                    <option value="public">Public (Show my name on the bid)</option>
+                    <option value="anonymous">Anonymous (Hide name on bid record)</option>
+                  </select>
                 </div>
               </div>
             </div>
 
             <button
               type="submit"
-              disabled={!isValidBid}
-              className="w-full py-4 rounded-xl gold-gradient-button text-black font-extrabold text-sm flex items-center justify-center gap-2 cursor-pointer shadow-xl shadow-amber-500/10 disabled:opacity-40"
+              disabled={!isValidBid || !currentUser || !isEmailVerified}
+              className="w-full py-4 rounded-xl gold-gradient-button text-black font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span>Review Entry & Confirm Bid</span>
+              <span>Review Details & Continue</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
         )}
 
-        {/* Step 2: Confirm */}
+        {/* Step 2: Confirm Details & Pay */}
         {step === 'confirm' && (
-          <div className="rounded-3xl bg-[#0E1017] border border-amber-500/30 p-6 sm:p-10 space-y-6 shadow-2xl">
-            <div className="text-center">
-              <span className="text-[10px] uppercase font-bold tracking-widest text-[#E5C158] bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
-                Final Step
+          <div className="rounded-3xl bg-[#0E1017] border border-white/[0.08] p-6 sm:p-10 space-y-6 shadow-2xl">
+            <h2 className="text-xl font-bold text-white">Review Your Spot Entry</h2>
+
+            <div className="rounded-2xl bg-[#141720] border border-white/[0.06] p-5 space-y-4">
+              <div className="flex justify-between items-center pb-3 border-b border-white/[0.06]">
+                <span className="text-xs text-slate-400">Public Name</span>
+                <span className="text-sm font-bold text-white">{name}</span>
+              </div>
+
+              <div className="flex justify-between items-center pb-3 border-b border-white/[0.06]">
+                <span className="text-xs text-slate-400">URL Slug</span>
+                <span className="text-sm font-mono text-amber-400">lelamrank.in/{slug}</span>
+              </div>
+
+              <div className="flex justify-between items-center pb-3 border-b border-white/[0.06]">
+                <span className="text-xs text-slate-400">Description</span>
+                <span className="text-xs text-slate-300 max-w-xs text-right line-clamp-2">{description}</span>
+              </div>
+
+              <div className="flex justify-between items-center pb-3 border-b border-white/[0.06]">
+                <span className="text-xs text-slate-400">Estimated Rank</span>
+                <span className="text-sm font-black text-[#E5C158]">#{estimatedRank}</span>
+              </div>
+
+              <div className="flex justify-between items-center pt-1">
+                <span className="text-sm font-bold text-slate-300">Total Verified Bid</span>
+                <span className="text-2xl font-black font-mono text-[#E5C158]">{formatINR(initialBidNum)}</span>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300/90 leading-relaxed flex items-start gap-3">
+              <ShieldCheck className="w-5 h-5 text-[#E5C158] shrink-0 mt-0.5" />
+              <span>
+                Your payment will be securely processed via Razorpay. Upon verified payment confirmation, your entry will immediately be published on the live leaderboard.
               </span>
-              <h2 className="text-2xl font-bold text-white mt-2">
-                CONFIRM YOUR ENTRY & BID
-              </h2>
-              <p className="text-xs text-slate-400">
-                Review your entry details before sandbox payment
-              </p>
             </div>
 
-            <div className="bg-[#141720] border border-white/[0.08] rounded-2xl p-5 space-y-3">
-              <div className="flex justify-between text-xs pb-2.5 border-b border-white/[0.06]">
-                <span className="text-slate-400">Entry Name</span>
-                <span className="font-bold text-white">{name}</span>
-              </div>
-              <div className="flex justify-between text-xs pb-2.5 border-b border-white/[0.06]">
-                <span className="text-slate-400">Public Slug</span>
-                <span className="font-mono text-amber-400">lelamrank.in/{slug}</span>
-              </div>
-              <div className="flex justify-between text-xs pb-2.5 border-b border-white/[0.06]">
-                <span className="text-slate-400">Description</span>
-                <span className="text-slate-300 max-w-xs text-right truncate">{description}</span>
-              </div>
-              <div className="flex justify-between text-sm pb-2.5 border-b border-white/[0.06]">
-                <span className="text-amber-400 font-semibold">Initial Bid</span>
-                <span className="font-black text-white text-base">{formatINR(initialBidNum)}</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-slate-400">Estimated Starting Rank</span>
-                <span className="font-extrabold text-[#E5C158] text-sm">#{estimatedRank}</span>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
+            <div className="flex gap-4">
               <button
+                type="button"
                 onClick={() => setStep('details')}
-                className="flex-1 py-3 rounded-xl bg-white/[0.05] border border-white/[0.1] text-xs font-semibold text-slate-300 hover:text-white cursor-pointer"
+                className="flex-1 py-3.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.08] text-slate-300 font-semibold text-xs transition-colors cursor-pointer"
               >
-                Edit Details
+                Back to Edit
               </button>
               <button
+                type="button"
                 onClick={handlePayAndCreate}
-                className="flex-2 py-3 rounded-xl gold-gradient-button text-black font-extrabold text-sm flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20"
+                className="flex-2 py-3.5 rounded-xl gold-gradient-button text-black font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20"
               >
-                <ShieldCheck className="w-4 h-4" />
-                <span>Proceed to Payment</span>
+                <span>Pay {formatINR(initialBidNum)} & Launch</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           </div>
         )}
 
-        {/* Step 3: Paying */}
+        {/* Step 3: Paying / Processing */}
         {step === 'paying' && (
-          <div className="rounded-3xl bg-[#0E1017] border border-white/[0.08] p-12 text-center space-y-4">
-            <div className="w-16 h-16 rounded-full border-4 border-amber-500/20 border-t-[#E5C158] animate-spin mx-auto"></div>
-            <h3 className="text-lg font-bold text-white">Verifying Payment & Allocating Rank...</h3>
-            <p className="text-xs text-slate-400 max-w-xs mx-auto">
-              Registering {name} onto the live authoritative leaderboard.
+          <div className="rounded-3xl bg-[#0E1017] border border-white/[0.08] p-12 text-center space-y-4 shadow-2xl">
+            <div className="w-12 h-12 border-4 border-amber-500/20 border-t-amber-400 rounded-full animate-spin mx-auto" />
+            <h3 className="text-lg font-bold text-white">Opening Razorpay Checkout...</h3>
+            <p className="text-xs text-slate-400">
+              Please complete the payment in the Razorpay window to verify and publish your entry.
             </p>
           </div>
         )}
 
-        {/* Step 4: Success */}
+        {/* Step 4: Success Screen */}
         {step === 'success' && createdEntry && (
-          <div className="rounded-3xl bg-[#0E1017] border border-amber-500/40 p-8 sm:p-12 text-center space-y-6 shadow-2xl">
-            <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto text-[#E5C158]">
-              <Sparkles className="w-8 h-8" />
+          <div className="rounded-3xl bg-gradient-to-b from-[#141824] to-[#0A0C11] border-2 border-amber-500/40 p-8 sm:p-12 text-center space-y-6 shadow-2xl">
+            <div className="w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-[#E5C158] flex items-center justify-center mx-auto">
+              <CheckCircle2 className="w-8 h-8" />
             </div>
 
             <div>
-              <span className="text-xs uppercase tracking-widest text-[#E5C158] font-extrabold">
-                SPOT SUCCESSFULLY CLAIMED!
-              </span>
-              <h2 className="text-3xl font-black text-white mt-1">
-                Rank #{createdRank} in Kerala
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold mb-2">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>SPOT SUCCESSFULLY CLAIMED & VERIFIED!</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-black text-white">
+                {createdEntry.name} is now Live!
               </h2>
-              <p className="text-xs text-slate-300 mt-2 max-w-md mx-auto">
-                <strong className="text-white">{createdEntry.name}</strong> is live at{' '}
-                <strong className="text-amber-400 font-mono">/{createdEntry.slug}</strong> with a verified bid of {formatINR(createdEntry.current_bid)}.
+              <p className="text-xs sm:text-sm text-slate-300 mt-1">
+                You claimed rank <strong className="text-[#E5C158]">#{createdRank}</strong> with a verified holding bid of {formatINR(createdEntry.current_bid)}.
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto pt-2">
-              <button
-                onClick={() => setShareModalOpen(true)}
-                className="flex-1 py-3.5 rounded-xl gold-gradient-button text-black font-extrabold text-xs flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Share2 className="w-4 h-4" />
-                <span>Share Rank Card</span>
-              </button>
-
+            <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
               <Link
                 href={`/${createdEntry.slug}`}
-                className="py-3.5 px-6 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.1] text-xs font-bold text-white flex items-center justify-center gap-1.5"
+                className="px-6 py-3 rounded-xl gold-gradient-button text-black font-black text-xs uppercase flex items-center justify-center gap-1.5"
               >
-                <span>View Profile</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                <span>View Public Profile</span>
+                <ArrowRight className="w-4 h-4" />
               </Link>
+              <button
+                onClick={() => setShareModalOpen(true)}
+                className="px-6 py-3 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] border border-white/[0.1] text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Share2 className="w-4 h-4 text-amber-400" />
+                <span>Share Branded Rank Card</span>
+              </button>
             </div>
           </div>
         )}
-      </div>
 
-      {createdEntry && shareModalOpen && (
-        <ShareModal
-          entry={createdEntry}
-          isOpen={shareModalOpen}
+        {/* Share Modal */}
+        {createdEntry && (
+          <ShareModal
+            entry={{ ...createdEntry, current_rank: createdRank }}
+            isOpen={shareModalOpen}
+            onClose={() => setShareModalOpen(false)}
+          />
+        )}
+
+        {/* Auth Modal Gate */}
+        <AuthModal
+          isOpen={authModalOpen}
           onClose={() => {
-            setShareModalOpen(false);
-            router.push(`/${createdEntry.slug}`);
+            setAuthModalOpen(false);
+            loadUser();
           }}
         />
-      )}
-
-      <AuthModal
-        isOpen={authModalOpen}
-        onClose={() => {
-          setAuthModalOpen(false);
-          loadUserData();
-        }}
-        onSuccess={() => {
-          loadUserData();
-        }}
-      />
+      </div>
     </>
   );
 }
 
-export default function CreateEntryPage() {
+export default function CreatePage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="w-12 h-12 rounded-full border-4 border-amber-500/20 border-t-[#E5C158] animate-spin"></div>
-      </div>
-    }>
+    <Suspense fallback={<div className="p-12 text-center text-slate-500">Loading...</div>}>
       <CreateEntryContent />
     </Suspense>
   );

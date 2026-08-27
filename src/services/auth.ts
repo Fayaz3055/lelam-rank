@@ -8,17 +8,33 @@ export interface AuthResponse {
   requiresEmailVerification?: boolean;
 }
 
+function getSiteUrl(): string {
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '');
+  }
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '');
+  }
+  if (typeof window !== 'undefined' && window.location.origin) {
+    return window.location.origin.replace(/\/$/, '');
+  }
+  return 'https://lelam-rank.vercel.app';
+}
+
 export const authService = {
   async signUp(email: string, password: string, fullName: string): Promise<AuthResponse> {
     const supabase = createClient();
 
     if (supabase && isSupabaseConfigured) {
+      const emailRedirectTo = `${getSiteUrl()}/`;
+
       const { data, error } = await supabase.auth.signUp({
-        email,
+        email: email.trim().toLowerCase(),
         password,
         options: {
+          emailRedirectTo,
           data: {
-            full_name: fullName,
+            full_name: fullName.trim(),
             role: 'user',
           },
         },
@@ -65,7 +81,7 @@ export const authService = {
 
     if (supabase && isSupabaseConfigured) {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim().toLowerCase(),
         password,
       });
 
@@ -112,8 +128,9 @@ export const authService = {
   async resetPassword(email: string): Promise<{ success: boolean; error: string | null }> {
     const supabase = createClient();
     if (supabase && isSupabaseConfigured) {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/reset-password`,
+      const redirectTo = `${getSiteUrl()}/`;
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+        redirectTo,
       });
       if (error) {
         return { success: false, error: error.message };
