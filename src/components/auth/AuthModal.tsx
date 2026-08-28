@@ -21,7 +21,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
 
   if (!isOpen) return null;
 
-  const withTimeout = async <T,>(promise: Promise<T>, timeoutMs = 8000): Promise<T> => {
+  const withTimeout = async <T,>(promise: Promise<T>, timeoutMs = 25000): Promise<T> => {
     let timeoutId: NodeJS.Timeout;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => reject(new Error('Request timed out. Please try again.')), timeoutMs);

@@ -61,7 +61,7 @@ export const authService = {
   },
 
   /**
-   * Registers a new user with Username, Email, and Password without mandatory email verification
+   * Registers a new user with Username, Email, and Password in a single fast serverless roundtrip
    */
   async signUp(username: string, email: string, password: string, fullName?: string): Promise<AuthResponse> {
     const cleanUsername = username.toLowerCase().trim().replace(/^@/, '');
@@ -75,12 +75,17 @@ export const authService = {
       return { user: null, error: 'Username can only contain letters, numbers, and underscores.' };
     }
 
-    // 2. Validate password
+    // 2. Validate email
+    if (!cleanEmail || !cleanEmail.includes('@') || cleanEmail.length < 5) {
+      return { user: null, error: 'Please enter a valid email address.' };
+    }
+
+    // 3. Validate password
     if (!password || password.length < 6) {
       return { user: null, error: 'Password must be at least 6 characters.' };
     }
 
-    // 3. Register via server-side API (creates auto-confirmed user instantly)
+    // 3. Register via server-side API (creates user and returns session in 1 request)
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
@@ -98,8 +103,32 @@ export const authService = {
         return { user: null, error: data.error || 'Registration failed. Please try again.' };
       }
 
-      // 4. Log in immediately to establish session and sync store
-      return await this.signIn(cleanEmail, password);
+      const userProfile: UserProfile = data.user;
+
+      // 4. Establish browser Supabase session if token returned
+      if (data.session) {
+        const supabase = createClient();
+        if (supabase && isSupabaseConfigured) {
+          try {
+            await supabase.auth.setSession({
+              access_token: data.session.access_token,
+              refresh_token: data.session.refresh_token,
+            });
+          } catch (e: unknown) {
+            console.warn('setSession note:', e);
+          }
+        }
+      }
+
+      // 5. Update local persistent store and notify all subscribers immediately
+      lelamStore.setCurrentUser(userProfile);
+      notifyAuthSubscribers(userProfile);
+
+      return {
+        user: userProfile,
+        error: null,
+        requiresEmailVerification: false,
+      };
     } catch (err: unknown) {
       // Fallback sandbox mode for development/test scripts/offline
       const mockUser: UserProfile = {

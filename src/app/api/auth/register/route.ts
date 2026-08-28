@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminSupabaseClient } from '@/lib/supabase/admin';
+import { createClient } from '@supabase/supabase-js';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
 
 export const dynamic = 'force-dynamic';
@@ -41,10 +42,12 @@ export async function POST(req: NextRequest) {
     }
 
     const admin = createAdminSupabaseClient();
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
     if (admin && isSupabaseConfigured) {
       // 2. Check username availability in profiles table
-      const { data: existingProfile, error: profileErr } = await admin
+      const { data: existingProfile } = await admin
         .from('profiles')
         .select('id, username')
         .eq('username', cleanUsername)
@@ -84,7 +87,7 @@ export async function POST(req: NextRequest) {
       const user = userData.user;
 
       // 4. Ensure profile row exists in public.profiles table
-      const { error: upsertErr } = await admin.from('profiles').upsert(
+      await admin.from('profiles').upsert(
         {
           id: user.id,
           email: cleanEmail,
@@ -96,21 +99,33 @@ export async function POST(req: NextRequest) {
         { onConflict: 'id' }
       );
 
-      if (upsertErr) {
-        console.warn('Profile upsert notice:', upsertErr.message);
+      // 5. Issue session tokens directly in the same request via anon client
+      let session = null;
+      if (url && anonKey) {
+        const anonSupabase = createClient(url, anonKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+        const { data: signData } = await anonSupabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: cleanPassword,
+        });
+        session = signData?.session || null;
       }
+
+      const userProfile = {
+        id: user.id,
+        email: cleanEmail,
+        username: cleanUsername,
+        full_name: cleanFullName || cleanUsername,
+        role: 'user' as const,
+        is_anonymous: false,
+        created_at: user.created_at,
+      };
 
       return NextResponse.json({
         success: true,
-        user: {
-          id: user.id,
-          email: cleanEmail,
-          username: cleanUsername,
-          full_name: cleanFullName || cleanUsername,
-          role: 'user',
-          is_anonymous: false,
-          created_at: user.created_at,
-        },
+        user: userProfile,
+        session,
       });
     }
 
@@ -126,6 +141,7 @@ export async function POST(req: NextRequest) {
         is_anonymous: false,
         created_at: new Date().toISOString(),
       },
+      session: null,
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : 'Registration failed.';
