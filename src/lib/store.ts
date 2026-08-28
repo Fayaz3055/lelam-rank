@@ -608,7 +608,19 @@ class LelamStore {
   }
 
   public setCurrentUser(user: UserProfile | null): void {
-    this.setStored(STORAGE_KEYS.CURRENT_USER, user);
+    if (typeof window === 'undefined') {
+      this.memoryStore.set(STORAGE_KEYS.CURRENT_USER, user);
+      return;
+    }
+    try {
+      if (user) {
+        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+      }
+    } catch (e) {
+      console.error('Storage error:', e);
+    }
   }
 
   public getUsers(): UserProfile[] {

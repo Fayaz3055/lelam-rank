@@ -299,22 +299,11 @@ export const authService = {
   async getCurrentUser(): Promise<UserProfile | null> {
     const supabase = createClient();
     if (supabase && isSupabaseConfigured) {
-      // 1. First check local session for instant non-blocking resolution
+      // 1. Check local session for instant non-blocking resolution
       const { data: sessionData } = await supabase.auth.getSession();
-      const sessionUser = sessionData?.session?.user;
+      const activeUser = sessionData?.session?.user;
 
-      if (!sessionUser) {
-        // Double check with getUser
-        const { data: userData } = await supabase.auth.getUser();
-        if (!userData?.user) {
-          lelamStore.setCurrentUser(null);
-          return null;
-        }
-      }
-
-      const activeUser = sessionUser || (await supabase.auth.getUser()).data.user;
       if (!activeUser) {
-        lelamStore.setCurrentUser(null);
         return null;
       }
 
@@ -325,7 +314,7 @@ export const authService = {
       );
 
       if (isAnonymous) {
-        const guest: UserProfile = {
+        return {
           id: activeUser.id,
           email: '',
           username: 'Guest',
@@ -334,31 +323,20 @@ export const authService = {
           is_anonymous: true,
           created_at: activeUser.created_at,
         };
-        lelamStore.setCurrentUser(guest);
-        return guest;
       }
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('username, full_name, role')
-        .eq('id', activeUser.id)
-        .maybeSingle();
+      const username = activeUser.user_metadata?.username || activeUser.email?.split('@')[0] || 'founder';
+      const role = activeUser.user_metadata?.role || (activeUser.email?.includes('admin') ? 'admin' : 'user');
 
-      const username = profile?.username || activeUser.user_metadata?.username || activeUser.email?.split('@')[0];
-      const role = profile?.role || activeUser.user_metadata?.role || (activeUser.email?.includes('admin') ? 'admin' : 'user');
-
-      const userProfile: UserProfile = {
+      return {
         id: activeUser.id,
         email: activeUser.email || '',
         username,
-        full_name: profile?.full_name || activeUser.user_metadata?.full_name || username,
+        full_name: activeUser.user_metadata?.full_name || username,
         role: role as 'user' | 'admin',
         is_anonymous: false,
         created_at: activeUser.created_at,
       };
-
-      lelamStore.setCurrentUser(userProfile);
-      return userProfile;
     }
     return lelamStore.getCurrentUser();
   },

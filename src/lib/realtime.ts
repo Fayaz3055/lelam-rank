@@ -10,8 +10,9 @@ export function subscribeToLeaderboard(onUpdate: () => void) {
     return () => {};
   }
 
+  const channelId = `leaderboard_rt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const channel = supabase
-    .channel('public:leaderboard_realtime')
+    .channel(channelId)
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'entries' },

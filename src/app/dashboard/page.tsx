@@ -51,7 +51,13 @@ export default function DashboardPage() {
     loadData();
     const unsubAuth = authService.onAuthStateChange((user) => {
       setCurrentUser(user);
-      loadData();
+      if (user && authService.isRegisteredUser(user)) {
+        dbService.getLeaderboardEntries().then((all) => {
+          setMyEntries(all.filter((e) => e.owner_id === user.id));
+        });
+      } else {
+        setMyEntries([]);
+      }
     });
     window.addEventListener('lelam_store_updated', loadData);
     return () => {
