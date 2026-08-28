@@ -39,8 +39,14 @@ export async function POST(req: Request) {
       }
 
       if (!authenticatedUser) {
+        if (bearerToken) {
+          return NextResponse.json(
+            { error: 'Invalid or expired session token. Please sign in again.' },
+            { status: 401 }
+          );
+        }
         return NextResponse.json(
-          { error: 'Authentication required. You must sign in before initiating a bid.' },
+          { error: 'Authentication required. No active session token found. Please sign in before initiating a bid.' },
           { status: 401 }
         );
       }

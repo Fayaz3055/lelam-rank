@@ -352,7 +352,11 @@ function CreateEntryContent() {
                   Leaderboard URL Slug *
                 </label>
                 <div className="flex items-center rounded-xl bg-[#141720] border border-white/[0.1] px-4 py-3 text-sm text-slate-400 focus-within:border-amber-500/50">
-                  <span className="shrink-0 text-slate-500">{(process.env.NEXT_PUBLIC_APP_URL || 'https://lelam-rank.vercel.app').replace(/^https?:\/\//, '')}/</span>
+                  <span className="shrink-0 text-slate-500">
+                    {(typeof window !== 'undefined' && window.location.host && !window.location.host.includes('localhost')
+                      ? window.location.host
+                      : 'lelam-rank.vercel.app')}/
+                  </span>
                   <input
                     type="text"
                     required
@@ -529,7 +533,11 @@ function CreateEntryContent() {
 
               <div className="flex justify-between items-center pb-3 border-b border-white/[0.06]">
                 <span className="text-xs text-slate-400">URL Slug</span>
-                <span className="text-sm font-mono text-amber-400">{(process.env.NEXT_PUBLIC_APP_URL || 'https://lelam-rank.vercel.app').replace(/^https?:\/\//, '')}/{slug}</span>
+                <span className="text-sm font-mono text-amber-400">
+                  {(typeof window !== 'undefined' && window.location.host && !window.location.host.includes('localhost')
+                    ? window.location.host
+                    : 'lelam-rank.vercel.app')}/{slug}
+                </span>
               </div>
 
               <div className="flex justify-between items-center pb-3 border-b border-white/[0.06]">

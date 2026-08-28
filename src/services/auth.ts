@@ -21,6 +21,49 @@ function notifyAuthSubscribers(user: UserProfile | null) {
   });
 }
 
+// Single module-level GoTrue listener to eliminate WebLock contention and browser lag
+let isSupabaseListenerInitialized = false;
+
+function ensureSupabaseAuthListener() {
+  if (isSupabaseListenerInitialized) return;
+  const supabase = createClient();
+  if (supabase && isSupabaseConfigured) {
+    isSupabaseListenerInitialized = true;
+    try {
+      supabase.auth.onAuthStateChange((event: string, session: any) => {
+        if (event === 'SIGNED_OUT') {
+          lelamStore.setCurrentUser(null);
+          lelamStore.setSessionTokens(null);
+          notifyAuthSubscribers(null);
+        } else if (session?.user) {
+          if (session.access_token) {
+            lelamStore.setSessionTokens({
+              access_token: session.access_token,
+              refresh_token: session.refresh_token,
+            });
+          }
+          const u = session.user;
+          const username = u.user_metadata?.username || u.email?.split('@')[0] || 'founder';
+          const role = u.user_metadata?.role || (u.email?.includes('admin') ? 'admin' : 'user');
+          const profile: UserProfile = {
+            id: u.id,
+            email: u.email || '',
+            username,
+            full_name: u.user_metadata?.full_name || username,
+            role: role as 'user' | 'admin',
+            is_anonymous: Boolean(u.is_anonymous),
+            created_at: u.created_at,
+          };
+          lelamStore.setCurrentUser(profile);
+          notifyAuthSubscribers(profile);
+        }
+      });
+    } catch (e) {
+      console.warn('Auth listener init error:', e);
+    }
+  }
+}
+
 export const authService = {
   /**
    * Checks if a public username is available
@@ -85,7 +128,7 @@ export const authService = {
       return { user: null, error: 'Password must be at least 6 characters.' };
     }
 
-    // 3. Register via server-side API (creates user and returns session in 1 request)
+    // 4. Register via server-side API (creates user and returns session in 1 request)
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
@@ -105,8 +148,14 @@ export const authService = {
 
       const userProfile: UserProfile = data.user;
 
-      // 4. Establish browser Supabase session if token returned
+      // 5. Store session tokens in persistent store and establish Supabase session
       if (data.session) {
+        if (data.session.access_token) {
+          lelamStore.setSessionTokens({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          });
+        }
         const supabase = createClient();
         if (supabase && isSupabaseConfigured) {
           try {
@@ -120,7 +169,7 @@ export const authService = {
         }
       }
 
-      // 5. Update local persistent store and notify all subscribers immediately
+      // 6. Update local persistent store and notify all subscribers immediately
       lelamStore.setCurrentUser(userProfile);
       notifyAuthSubscribers(userProfile);
 
@@ -180,8 +229,14 @@ export const authService = {
 
       const userProfile: UserProfile = data.user;
 
-      // 1. Establish session in browser Supabase client
+      // 1. Store session tokens in persistent store and establish Supabase session
       if (data.session) {
+        if (data.session.access_token) {
+          lelamStore.setSessionTokens({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          });
+        }
         const supabase = createClient();
         if (supabase && isSupabaseConfigured) {
           try {
@@ -238,12 +293,14 @@ export const authService = {
       created_at: new Date().toISOString(),
     };
     lelamStore.setCurrentUser(guestUser);
+    lelamStore.setSessionTokens(null);
     notifyAuthSubscribers(guestUser);
     return { user: guestUser, error: null };
   },
 
   async signOut(): Promise<void> {
     lelamStore.setCurrentUser(null);
+    lelamStore.setSessionTokens(null);
     notifyAuthSubscribers(null);
     const supabase = createClient();
     if (supabase && isSupabaseConfigured) {
@@ -308,6 +365,7 @@ export const authService = {
    */
   onAuthStateChange(callback: (user: UserProfile | null) => void): () => void {
     authSubscribers.add(callback);
+    ensureSupabaseAuthListener();
 
     // Provide initial state immediately if present
     const current = lelamStore.getCurrentUser();
@@ -315,44 +373,8 @@ export const authService = {
       callback(current);
     }
 
-    // Also listen to Supabase auth events (sign out, token refresh) without deadlocking queries
-    const supabase = createClient();
-    let supabaseUnsub: (() => void) | null = null;
-
-    if (supabase && isSupabaseConfigured) {
-      try {
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, session: any) => {
-          if (event === 'SIGNED_OUT') {
-            lelamStore.setCurrentUser(null);
-            notifyAuthSubscribers(null);
-          } else if (session?.user) {
-            const u = session.user;
-            const username = u.user_metadata?.username || u.email?.split('@')[0] || 'founder';
-            const role = u.user_metadata?.role || (u.email?.includes('admin') ? 'admin' : 'user');
-            const profile: UserProfile = {
-              id: u.id,
-              email: u.email || '',
-              username,
-              full_name: u.user_metadata?.full_name || username,
-              role: role as 'user' | 'admin',
-              is_anonymous: Boolean(u.is_anonymous),
-              created_at: u.created_at,
-            };
-            lelamStore.setCurrentUser(profile);
-            notifyAuthSubscribers(profile);
-          }
-        });
-        supabaseUnsub = () => subscription.unsubscribe();
-      } catch (e) {
-        console.warn('Auth subscription note:', e);
-      }
-    }
-
     return () => {
       authSubscribers.delete(callback);
-      if (supabaseUnsub) {
-        supabaseUnsub();
-      }
     };
   },
 
@@ -365,11 +387,23 @@ export const authService = {
     if (supabase && isSupabaseConfigured) {
       try {
         const { data } = await supabase.auth.getSession();
-        return data?.session?.access_token || null;
-      } catch {
-        return null;
+        if (data?.session?.access_token) {
+          return data.session.access_token;
+        }
+      } catch (e) {
+        console.warn('getSession note:', e);
       }
     }
+
+    // Direct fallback from persistent session storage
+    const storedTokens = lelamStore.getSessionTokens();
+    if (storedTokens?.access_token) {
+      if (supabase && isSupabaseConfigured) {
+        supabase.auth.setSession(storedTokens).catch(() => {});
+      }
+      return storedTokens.access_token;
+    }
+
     return null;
   },
 

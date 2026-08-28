@@ -301,6 +301,7 @@ const STORAGE_KEYS = {
   PAYMENTS: 'lelam_rank_payments_v1',
   CURRENT_USER: 'lelam_rank_user_v1',
   USERS: 'lelam_rank_users_v1',
+  SESSION_TOKENS: 'lelam_rank_session_tokens_v1',
 };
 
 // Only enable realistic Kerala seed data when explicitly enabled via environment variable
@@ -617,6 +618,26 @@ class LelamStore {
         localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
       } else {
         localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+      }
+    } catch (e) {
+      console.error('Storage error:', e);
+    }
+  }
+
+  public getSessionTokens(): { access_token: string; refresh_token: string } | null {
+    return this.getStored<{ access_token: string; refresh_token: string } | null>(STORAGE_KEYS.SESSION_TOKENS, null);
+  }
+
+  public setSessionTokens(tokens: { access_token: string; refresh_token: string } | null): void {
+    if (typeof window === 'undefined') {
+      this.memoryStore.set(STORAGE_KEYS.SESSION_TOKENS, tokens);
+      return;
+    }
+    try {
+      if (tokens) {
+        localStorage.setItem(STORAGE_KEYS.SESSION_TOKENS, JSON.stringify(tokens));
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.SESSION_TOKENS);
       }
     } catch (e) {
       console.error('Storage error:', e);

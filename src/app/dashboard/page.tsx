@@ -198,7 +198,7 @@ export default function DashboardPage() {
                         href={`/${entry.slug}`}
                         className="text-xs text-amber-400 hover:underline font-mono"
                       >
-                        {(process.env.NEXT_PUBLIC_APP_URL || 'https://lelam-rank.vercel.app').replace(/^https?:\/\//, '')}/{entry.slug}
+                        {(typeof window !== 'undefined' && window.location.host && !window.location.host.includes('localhost') ? window.location.host : 'lelam-rank.vercel.app')}/{entry.slug}
                       </Link>
                     </div>
                   </div>

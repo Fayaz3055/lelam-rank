@@ -436,7 +436,9 @@ export default function BidModal({ entry, isOpen, onClose, onSuccess }: BidModal
                       Leaderboard URL Slug *
                     </label>
                     <span className="text-[11px] text-slate-400 font-mono">
-                      {(process.env.NEXT_PUBLIC_APP_URL || 'https://lelam-rank.vercel.app').replace(/^https?:\/\//, '')}/{slug || 'my-startup'}
+                      {(typeof window !== 'undefined' && window.location.host && !window.location.host.includes('localhost')
+                        ? window.location.host
+                        : 'lelam-rank.vercel.app')}/{slug || 'my-startup'}
                     </span>
                   </div>
                   <div className="relative">
@@ -659,7 +661,7 @@ export default function BidModal({ entry, isOpen, onClose, onSuccess }: BidModal
                   <span className="text-slate-400">Your New Entity</span>
                   <div className="text-right">
                     <div className="font-bold text-white">{entityName}</div>
-                    <div className="text-[11px] text-amber-400 font-mono">{(process.env.NEXT_PUBLIC_APP_URL || 'https://lelam-rank.vercel.app').replace(/^https?:\/\//, '')}/{slug}</div>
+                    <div className="text-[11px] text-amber-400 font-mono">{(typeof window !== 'undefined' && window.location.host && !window.location.host.includes('localhost') ? window.location.host : 'lelam-rank.vercel.app')}/{slug}</div>
                   </div>
                 </div>
 
@@ -771,7 +773,7 @@ export default function BidModal({ entry, isOpen, onClose, onSuccess }: BidModal
                     href={`/${slug}`}
                     className="text-xs text-amber-400 hover:underline font-mono"
                   >
-                    {(process.env.NEXT_PUBLIC_APP_URL || 'https://lelam-rank.vercel.app').replace(/^https?:\/\//, '')}/{slug}
+                    {(typeof window !== 'undefined' && window.location.host && !window.location.host.includes('localhost') ? window.location.host : 'lelam-rank.vercel.app')}/{slug}
                   </Link>
                 </div>
                 <div className="flex justify-between items-center">
