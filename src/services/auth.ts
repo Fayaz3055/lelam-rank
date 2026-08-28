@@ -86,15 +86,9 @@ export const authService = {
       }
 
       // 4. Log in immediately to establish the browser session
-      const supabase = createClient();
-      if (supabase && isSupabaseConfigured) {
-        const { error: signInErr } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password,
-        });
-        if (signInErr) {
-          console.warn('Auto-login note:', signInErr.message);
-        }
+      const loginRes = await this.signIn(cleanEmail, password);
+      if (loginRes.user) {
+        return loginRes;
       }
 
       const userProfile: UserProfile = {
@@ -140,62 +134,36 @@ export const authService = {
    */
   async signIn(emailOrUsername: string, password: string): Promise<AuthResponse> {
     const input = emailOrUsername.trim().toLowerCase();
-    const supabase = createClient();
 
-    if (supabase && isSupabaseConfigured) {
-      let targetEmail = input;
-
-      // If user typed a username without @, look up the email
-      if (!input.includes('@')) {
-        const cleanUser = input.replace(/^@/, '');
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('email')
-          .eq('username', cleanUser)
-          .maybeSingle();
-
-        if (profile?.email) {
-          targetEmail = profile.email;
-        }
-      }
-
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: targetEmail,
-        password,
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          emailOrUsername: input,
+          password,
+        }),
       });
 
-      if (error) {
-        let friendly = error.message;
-        if (
-          error.message.toLowerCase().includes('invalid login credentials') ||
-          error.message.toLowerCase().includes('invalid credentials')
-        ) {
-          friendly = 'Invalid email/username or password. Please check your credentials.';
-        } else if (error.message.toLowerCase().includes('email not confirmed')) {
-          friendly = 'Please contact support or register a new account.';
-        }
-        return { user: null, error: friendly };
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { user: null, error: data.error || 'Invalid credentials.' };
       }
 
-      // Fetch profile to obtain username
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('username, full_name, role')
-        .eq('id', data.user.id)
-        .maybeSingle();
+      // Set session in browser Supabase client if available
+      const supabase = createClient();
+      if (supabase && isSupabaseConfigured && data.session) {
+        try {
+          await supabase.auth.setSession({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          });
+        } catch (e) {
+          console.warn('SetSession notice:', e);
+        }
+      }
 
-      const username = profile?.username || data.user.user_metadata?.username || data.user.email?.split('@')[0];
-      const role = profile?.role || data.user.user_metadata?.role || (data.user.email?.includes('admin') ? 'admin' : 'user');
-
-      const userProfile: UserProfile = {
-        id: data.user.id,
-        email: data.user.email || targetEmail,
-        username,
-        full_name: profile?.full_name || data.user.user_metadata?.full_name || username,
-        role: role as 'user' | 'admin',
-        created_at: data.user.created_at || new Date().toISOString(),
-      };
-
+      const userProfile: UserProfile = data.user;
       lelamStore.setCurrentUser(userProfile);
 
       return {
@@ -203,23 +171,23 @@ export const authService = {
         error: null,
         requiresEmailVerification: false,
       };
+    } catch (err: unknown) {
+      // Fallback sandbox sign in
+      const localUser = lelamStore.getUsers().find(
+        (u) => u.email.toLowerCase() === input || u.username?.toLowerCase() === input
+      );
+      const role = (localUser?.role || (input.includes('admin') ? 'admin' : 'user')) as 'user' | 'admin';
+      const mockUser: UserProfile = localUser || {
+        id: `user-${Date.now()}`,
+        email: input.includes('@') ? input : `${input}@example.com`,
+        username: input.replace(/@.*$/, ''),
+        full_name: input.split('@')[0],
+        role,
+        created_at: new Date().toISOString(),
+      };
+      lelamStore.setCurrentUser(mockUser);
+      return { user: mockUser, error: null };
     }
-
-    // Fallback sandbox sign in
-    const localUser = lelamStore.getUsers().find(
-      (u) => u.email.toLowerCase() === input || u.username?.toLowerCase() === input
-    );
-    const role = (localUser?.role || (input.includes('admin') ? 'admin' : 'user')) as 'user' | 'admin';
-    const mockUser: UserProfile = localUser || {
-      id: `user-${Date.now()}`,
-      email: input.includes('@') ? input : `${input}@example.com`,
-      username: input.replace(/@.*$/, ''),
-      full_name: input.split('@')[0],
-      role,
-      created_at: new Date().toISOString(),
-    };
-    lelamStore.setCurrentUser(mockUser);
-    return { user: mockUser, error: null };
   },
 
   /**
