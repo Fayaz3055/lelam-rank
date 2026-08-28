@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Crown, ArrowUpRight, Swords, ExternalLink, ShieldCheck } from 'lucide-react';
 import { Entry } from '@/types';
-import { formatINR } from '@/lib/ranking';
+import { formatINR, getCategoryTag, formatTimeAgo } from '@/lib/ranking';
 import BidModal from '@/components/bidding/BidModal';
 
 interface ChampionCardProps {
@@ -83,9 +83,12 @@ export default function ChampionCard({ champion }: ChampionCardProps) {
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-2xl font-black text-white tracking-tight">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-[#E5C158] font-bold">
+                    {getCategoryTag(champion)}
+                  </span>
+                  <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
                     {champion.name}
                   </h3>
                   {champion.website_url && (
@@ -105,7 +108,7 @@ export default function ChampionCard({ champion }: ChampionCardProps) {
                   {champion.description}
                 </p>
 
-                <div className="pt-1 flex items-center gap-3 text-xs">
+                <div className="pt-1 flex flex-wrap items-center gap-4 text-xs">
                   <Link
                     href={`/${champion.slug}`}
                     className="text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1"
@@ -113,6 +116,10 @@ export default function ChampionCard({ champion }: ChampionCardProps) {
                     <span>View Public Profile</span>
                     <ArrowUpRight className="w-3 h-3" />
                   </Link>
+
+                  <span className="text-[11px] font-mono text-slate-400">
+                    Verified {formatTimeAgo(champion.updated_at || champion.created_at)}
+                  </span>
                 </div>
               </div>
             </div>
@@ -120,9 +127,9 @@ export default function ChampionCard({ champion }: ChampionCardProps) {
             {/* Bid Display & Challenge CTA */}
             <div className="md:col-span-4 flex flex-col items-start md:items-end justify-center bg-black/40 p-4 rounded-xl border border-white/[0.06]">
               <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
-                HOLDING BID
+                REIGNING BID
               </span>
-              <div className="text-3xl font-black text-[#E5C158] my-0.5">
+              <div className="text-2xl sm:text-3xl font-black text-[#E5C158] my-0.5 font-mono">
                 {formatINR(champion.current_bid)}
               </div>
               <span className="text-[11px] text-slate-400 mb-3">

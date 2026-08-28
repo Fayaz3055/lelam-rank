@@ -91,14 +91,14 @@ export const dbService = {
     return lelamStore.getBidsByEntryId(entryId);
   },
 
-  async getActivityFeed(): Promise<ActivityEvent[]> {
+  async getActivityFeed(limit = 20): Promise<ActivityEvent[]> {
     const supabase = createClient();
     if (supabase && isSupabaseConfigured) {
       const { data, error } = await supabase
         .from('activity')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(20);
+        .limit(limit);
 
       if (!error && data) {
         return data.map((act: any) => ({
@@ -114,7 +114,7 @@ export const dbService = {
         }));
       }
     }
-    return lelamStore.getActivity();
+    return lelamStore.getActivity().slice(0, limit);
   },
 
   async getStats(): Promise<LeaderboardStats> {

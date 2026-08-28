@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Zap } from 'lucide-react';
 import { Entry } from '@/types';
-import { formatINR } from '@/lib/ranking';
+import { formatINR, getCategoryTag } from '@/lib/ranking';
 import BidModal from '@/components/bidding/BidModal';
 
 interface PodiumProps {
@@ -104,10 +104,16 @@ export default function Podium({ entries }: PodiumProps) {
                   </div>
 
                   {/* Name & Bid */}
-                  <h3 className="text-base sm:text-lg font-bold text-white truncate px-2">
-                    {entry.name}
-                  </h3>
-                  <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5 mb-2">
+                  <div className="mb-2">
+                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-white/[0.05] border border-white/[0.08] text-slate-300">
+                      {getCategoryTag(entry)}
+                    </span>
+                    <h3 className="text-base sm:text-lg font-bold text-white truncate px-2 mt-1">
+                      {entry.name}
+                    </h3>
+                  </div>
+
+                  <p className="text-[11px] text-slate-400 line-clamp-1 mb-2">
                     {entry.description}
                   </p>
 

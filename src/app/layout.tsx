@@ -41,7 +41,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${outfit.variable} dark`}>
+    <html lang="en" className={`${inter.variable} ${outfit.variable} dark scroll-smooth scroll-pt-24`}>
       <body className="min-h-screen bg-[#08090C] text-[#F8F9FA] flex flex-col font-sans selection:bg-amber-500/20 selection:text-amber-200">
         <Header />
         <main className="flex-1">{children}</main>
