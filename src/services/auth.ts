@@ -325,13 +325,6 @@ export const authService = {
   },
 
   async getCurrentUser(): Promise<UserProfile | null> {
-    // 1. Instant resolution from persistent local store (memory + localStorage)
-    const stored = lelamStore.getCurrentUser();
-    if (stored) {
-      return stored;
-    }
-
-    // 2. If no local profile cached but browser Supabase client is configured, check session
     const supabase = createClient();
     if (supabase && isSupabaseConfigured) {
       try {
@@ -352,12 +345,25 @@ export const authService = {
           lelamStore.setCurrentUser(profile);
           return profile;
         }
+
+        // If no active Supabase session, check if user is a guest
+        const stored = lelamStore.getCurrentUser();
+        if (stored?.is_anonymous) {
+          return stored;
+        }
+
+        // Stale registered session without Supabase auth -> clear
+        if (stored) {
+          lelamStore.setCurrentUser(null);
+          lelamStore.setSessionTokens(null);
+        }
+        return null;
       } catch (e) {
         console.warn('Session check note:', e);
       }
     }
 
-    return null;
+    return lelamStore.getCurrentUser();
   },
 
   /**

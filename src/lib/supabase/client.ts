@@ -1,8 +1,8 @@
-import { createBrowserClient } from '@supabase/ssr';
+import { createClient as createSupabaseClient, SupabaseClient } from '@supabase/supabase-js';
 
-let client: ReturnType<typeof createBrowserClient> | null = null;
+let client: SupabaseClient | null = null;
 
-export function createClient() {
+export function createClient(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
@@ -11,11 +11,24 @@ export function createClient() {
   }
 
   if (typeof window === 'undefined') {
-    return createBrowserClient(url, anonKey);
+    return createSupabaseClient(url, anonKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
   }
 
   if (!client) {
-    client = createBrowserClient(url, anonKey);
+    client = createSupabaseClient(url, anonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storage: window.localStorage,
+        storageKey: 'sb-lelam-auth-token',
+      },
+    });
   }
 
   return client;
@@ -26,4 +39,3 @@ export const isSupabaseConfigured = Boolean(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
   !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder')
 );
-

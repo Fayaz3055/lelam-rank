@@ -199,12 +199,17 @@ export default function BidModal({ entry, isOpen, onClose, onSuccess }: BidModal
 
       // 1. Get token and create server-side order with verified user context
       const token = await authService.getAccessToken();
+      if (!token) {
+        setStep('details');
+        setError('Authentication required. Please sign in to place a bid.');
+        setAuthModalOpen(true);
+        return;
+      }
+
       const authHeaders: Record<string, string> = {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       };
-      if (token) {
-        authHeaders['Authorization'] = `Bearer ${token}`;
-      }
 
       const orderRes = await fetch('/api/bids/create-order', {
         method: 'POST',

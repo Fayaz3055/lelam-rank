@@ -41,7 +41,7 @@ export const dbService = {
         .from('leaderboard_view')
         .select('*')
         .eq('slug', slug.toLowerCase().trim())
-        .single();
+        .maybeSingle();
 
       if (!error && data) {
         return {
@@ -161,7 +161,7 @@ export const dbService = {
           owner_id: data.owner_id,
         })
         .select()
-        .single();
+        .maybeSingle();
 
       if (insertError) {
         throw new Error(insertError.message);
@@ -172,7 +172,7 @@ export const dbService = {
         .from('payments')
         .insert({
           user_id: data.owner_id,
-          entry_id: insertedEntry.id,
+          entry_id: insertedEntry?.id,
           amount: data.initial_bid,
           provider: 'razorpay',
           provider_order_id: `order_${Date.now()}`,
@@ -180,12 +180,12 @@ export const dbService = {
           status: 'verified',
         })
         .select()
-        .single();
+        .maybeSingle();
 
       if (!payError && insertedPayment) {
         // Record verified bid via atomic RPC function
         await supabase.rpc('place_verified_bid', {
-          p_entry_id: insertedEntry.id,
+          p_entry_id: insertedEntry?.id,
           p_bidder_id: data.owner_id,
           p_amount: data.initial_bid,
           p_payment_id: insertedPayment.id,
@@ -194,7 +194,7 @@ export const dbService = {
         });
       }
 
-      const refreshed = await this.getEntryBySlug(insertedEntry.slug);
+      const refreshed = insertedEntry ? await this.getEntryBySlug(insertedEntry.slug) : null;
       return {
         entry: refreshed || insertedEntry,
         rank: refreshed?.current_rank || 1,
@@ -231,7 +231,7 @@ export const dbService = {
             status: 'verified',
           })
           .select()
-          .single();
+          .maybeSingle();
         paymentId = payRecord?.id;
       }
 

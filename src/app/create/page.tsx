@@ -49,10 +49,12 @@ function CreateEntryContent() {
   // Real Auth State
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [cachedEntries, setCachedEntries] = useState<Entry[]>([]);
 
   useEffect(() => {
     loadUser();
     loadRazorpayScript().catch(console.error);
+    dbService.getLeaderboardEntries().then(setCachedEntries).catch(console.error);
     const unsub = authService.onAuthStateChange((user) => {
       setCurrentUser(user);
       if (user && !bidderName) {
@@ -78,15 +80,11 @@ function CreateEntryContent() {
   const isValidBid = initialBidNum >= 50;
 
   useEffect(() => {
-    async function updateEstimatedRank() {
-      if (isValidBid) {
-        const entries = await dbService.getLeaderboardEntries();
-        const est = calculateEstimatedRank(initialBidNum, entries);
-        setEstimatedRank(est);
-      }
+    if (isValidBid) {
+      const est = calculateEstimatedRank(initialBidNum, cachedEntries);
+      setEstimatedRank(est);
     }
-    updateEstimatedRank();
-  }, [initialBidNum, isValidBid]);
+  }, [initialBidNum, isValidBid, cachedEntries]);
 
   const handleNameChange = (val: string) => {
     setName(val);
@@ -167,12 +165,17 @@ function CreateEntryContent() {
 
       // 3. Get active auth token for secure server verification
       const token = await authService.getAccessToken();
+      if (!token) {
+        setStep('details');
+        setError('Authentication required. Please sign in to initiate your bid.');
+        setAuthModalOpen(true);
+        return;
+      }
+
       const authHeaders: Record<string, string> = {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       };
-      if (token) {
-        authHeaders['Authorization'] = `Bearer ${token}`;
-      }
 
       // 4. Create Order on Server
       const orderRes = await fetch('/api/bids/create-order', {
