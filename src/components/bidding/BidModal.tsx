@@ -198,6 +198,7 @@ export default function BidModal({ entry, isOpen, onClose, onSuccess }: BidModal
       }
 
       // 1. Get token and create server-side order with verified user context
+      setStep('paying');
       const token = await authService.getAccessToken();
       if (!token) {
         setStep('details');

@@ -108,6 +108,37 @@ CREATE INDEX IF NOT EXISTS idx_entries_status ON public.entries(status);
 CREATE INDEX IF NOT EXISTS idx_entries_owner ON public.entries(owner_id);
 CREATE INDEX IF NOT EXISTS idx_entries_current_bid ON public.entries(current_bid DESC);
 
+-- Trigger to strictly PREVENT tampering with entries current_bid, status, featured, owner_id
+CREATE OR REPLACE FUNCTION public.protect_entry_fields()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF auth.role() != 'service_role' THEN
+    IF NEW.current_bid IS DISTINCT FROM OLD.current_bid THEN
+      RAISE EXCEPTION 'Unauthorized: Bid amount cannot be modified directly. Place a verified bid.';
+    END IF;
+    IF NEW.status IS DISTINCT FROM OLD.status THEN
+      RAISE EXCEPTION 'Unauthorized: Entry status can only be modified by administrators.';
+    END IF;
+    IF NEW.featured IS DISTINCT FROM OLD.featured THEN
+      RAISE EXCEPTION 'Unauthorized: Featured flag can only be modified by administrators.';
+    END IF;
+    IF NEW.owner_id IS DISTINCT FROM OLD.owner_id THEN
+      RAISE EXCEPTION 'Unauthorized: Entry owner cannot be modified.';
+    END IF;
+    IF NEW.id IS DISTINCT FROM OLD.id THEN
+      RAISE EXCEPTION 'Unauthorized: Entry ID cannot be modified.';
+    END IF;
+  END IF;
+  NEW.updated_at := NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trg_protect_entry_fields ON public.entries;
+CREATE TRIGGER trg_protect_entry_fields
+  BEFORE UPDATE ON public.entries
+  FOR EACH ROW EXECUTE FUNCTION public.protect_entry_fields();
+
 -- 3. Payments Table (Razorpay & Sandbox transactions)
 CREATE TABLE IF NOT EXISTS public.payments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -124,6 +155,27 @@ CREATE TABLE IF NOT EXISTS public.payments (
 CREATE INDEX IF NOT EXISTS idx_payments_order ON public.payments(provider_order_id);
 CREATE INDEX IF NOT EXISTS idx_payments_payment_id ON public.payments(provider_payment_id);
 CREATE INDEX IF NOT EXISTS idx_payments_entry ON public.payments(entry_id);
+
+-- Trigger to strictly PREVENT tampering with payment status (only service-role can mark verified)
+CREATE OR REPLACE FUNCTION public.protect_payment_status()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF auth.role() != 'service_role' THEN
+    IF TG_OP = 'INSERT' AND NEW.status != 'created' THEN
+      RAISE EXCEPTION 'Unauthorized: New payments must start with created status.';
+    END IF;
+    IF TG_OP = 'UPDATE' AND NEW.status IS DISTINCT FROM OLD.status THEN
+      RAISE EXCEPTION 'Unauthorized: Payment verification status can only be set by payment verification server.';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trg_protect_payment_status ON public.payments;
+CREATE TRIGGER trg_protect_payment_status
+  BEFORE INSERT OR UPDATE ON public.payments
+  FOR EACH ROW EXECUTE FUNCTION public.protect_payment_status();
 
 -- 4. Bids Table (Permanent, Verified bids)
 CREATE TABLE IF NOT EXISTS public.bids (
