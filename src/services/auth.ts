@@ -151,20 +151,24 @@ export const authService = {
 
       const userProfile: UserProfile = data.user;
 
-      // 1. Immediately update local persistent store and notify all subscribers
-      lelamStore.setCurrentUser(userProfile);
-      notifyAuthSubscribers(userProfile);
-
-      // 2. Set session in browser Supabase client asynchronously without blocking
+      // 1. Establish session in browser Supabase client
       if (data.session) {
         const supabase = createClient();
         if (supabase && isSupabaseConfigured) {
-          supabase.auth.setSession({
-            access_token: data.session.access_token,
-            refresh_token: data.session.refresh_token,
-          }).catch((e: unknown) => console.warn('Non-blocking setSession note:', e));
+          try {
+            await supabase.auth.setSession({
+              access_token: data.session.access_token,
+              refresh_token: data.session.refresh_token,
+            });
+          } catch (e: unknown) {
+            console.warn('setSession note:', e);
+          }
         }
       }
+
+      // 2. Immediately update local persistent store and notify all subscribers
+      lelamStore.setCurrentUser(userProfile);
+      notifyAuthSubscribers(userProfile);
 
       return {
         user: userProfile,
@@ -289,12 +293,9 @@ export const authService = {
     if (supabase && isSupabaseConfigured) {
       try {
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, session: any) => {
-          if (event === 'SIGNED_OUT' || !session?.user) {
-            const currentStored = lelamStore.getCurrentUser();
-            if (currentStored && !currentStored.is_anonymous) {
-              lelamStore.setCurrentUser(null);
-              notifyAuthSubscribers(null);
-            }
+          if (event === 'SIGNED_OUT') {
+            lelamStore.setCurrentUser(null);
+            notifyAuthSubscribers(null);
           } else if (session?.user) {
             const u = session.user;
             const username = u.user_metadata?.username || u.email?.split('@')[0] || 'founder';
