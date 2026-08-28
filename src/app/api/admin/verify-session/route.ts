@@ -19,10 +19,17 @@ export async function GET() {
           .from('profiles')
           .select('role')
           .eq('id', data.user.id)
-          .single();
+          .maybeSingle();
 
-        if (profile?.role === 'admin') {
-          return NextResponse.json({ authenticated: true, role: 'admin' });
+        const configuredAdminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+        const userEmail = (data.user.email || '').trim().toLowerCase();
+
+        if (
+          profile?.role === 'admin' ||
+          data.user.user_metadata?.role === 'admin' ||
+          (configuredAdminEmail && userEmail === configuredAdminEmail)
+        ) {
+          return NextResponse.json({ authenticated: true, role: 'admin', user: { id: data.user.id, email: data.user.email } });
         }
       }
     }

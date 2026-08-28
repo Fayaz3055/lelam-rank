@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createAdminSupabaseClient } from '@/lib/supabase/admin';
 import { cookies } from 'next/headers';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
@@ -24,12 +25,14 @@ export async function POST(req: Request) {
       );
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+    const configuredAdminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
     const supabase = await createServerSupabaseClient();
 
     // 1. Authoritative Supabase Auth Verification
     if (supabase) {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
+        email: normalizedEmail,
         password,
       });
 
@@ -39,9 +42,23 @@ export async function POST(req: Request) {
           .from('profiles')
           .select('role')
           .eq('id', data.user.id)
-          .single();
+          .maybeSingle();
 
-        if (profile?.role === 'admin' || data.user.user_metadata?.role === 'admin') {
+        const isConfiguredAdmin = configuredAdminEmail && normalizedEmail === configuredAdminEmail;
+        const isAdminRole = profile?.role === 'admin' || data.user.user_metadata?.role === 'admin';
+
+        if (isAdminRole || isConfiguredAdmin) {
+          // If configured via ADMIN_EMAIL but profile role was 'user', auto-promote in profiles table
+          if (isConfiguredAdmin && profile?.role !== 'admin') {
+            const adminSupabase = createAdminSupabaseClient();
+            if (adminSupabase) {
+              await adminSupabase
+                .from('profiles')
+                .update({ role: 'admin' })
+                .eq('id', data.user.id);
+            }
+          }
+
           const cookieStore = await cookies();
           cookieStore.set('lelam_admin_session', 'authenticated_admin', {
             httpOnly: true,
@@ -51,19 +68,32 @@ export async function POST(req: Request) {
             path: '/',
           });
 
-          return NextResponse.json({ success: true, role: 'admin' });
+          return NextResponse.json({
+            success: true,
+            role: 'admin',
+            user: { id: data.user.id, email: data.user.email },
+          });
         } else {
           return NextResponse.json(
-            { error: 'Forbidden: Authenticated user does not possess administrator role.' },
+            { error: 'Forbidden: This account does not possess administrator privileges.' },
             { status: 403 }
           );
         }
       }
     }
 
-    // In sandbox test environments without Supabase credentials connected, fallback simulation handles test runs
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder')) {
-      if ((email === 'admin@lelamrank.in' || email === 'admin@lelam-rank.vercel.app' || email === 'admin@example.com') && password === 'admin') {
+    // 2. Sandbox / Local test simulation when Supabase credentials are placeholder or not connected
+    if (
+      !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder')
+    ) {
+      const isTestAdminEmail =
+        normalizedEmail === 'admin@lelamrank.in' ||
+        normalizedEmail === 'admin@lelam-rank.vercel.app' ||
+        normalizedEmail === 'admin@example.com' ||
+        (configuredAdminEmail && normalizedEmail === configuredAdminEmail);
+
+      if (isTestAdminEmail && (password === 'admin' || password === 'admin123' || password === 'Password123!')) {
         const cookieStore = await cookies();
         cookieStore.set('lelam_admin_session', 'authenticated_admin', {
           httpOnly: true,
@@ -72,7 +102,11 @@ export async function POST(req: Request) {
           maxAge: 60 * 60 * 24,
           path: '/',
         });
-        return NextResponse.json({ success: true, role: 'admin' });
+        return NextResponse.json({
+          success: true,
+          role: 'admin',
+          user: { id: 'admin-simulated-id', email: normalizedEmail },
+        });
       }
     }
 

@@ -25,7 +25,7 @@ export default function Header() {
   }, []);
 
   const navLinks = [
-    { name: 'Leaderboard', href: '/leaderboard' },
+    { name: 'Leaderboard', href: '/' },
     { name: 'How It Works', href: '/how-it-works' },
     { name: 'About', href: '/about' },
     { name: 'Rules', href: '/rules' },

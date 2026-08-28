@@ -19,18 +19,27 @@ export async function POST(req: Request) {
     }
 
     // 2. Check Supabase server session if configured
-    const serverSupabase = await createServerSupabaseClient();
-    if (serverSupabase) {
-      const { data } = await serverSupabase.auth.getUser();
-      if (data.user) {
-        const { data: profile } = await serverSupabase
-          .from('profiles')
-          .select('role')
-          .eq('id', data.user.id)
-          .single();
+    if (!isAuthorizedAdmin) {
+      const serverSupabase = await createServerSupabaseClient();
+      if (serverSupabase) {
+        const { data } = await serverSupabase.auth.getUser();
+        if (data.user) {
+          const { data: profile } = await serverSupabase
+            .from('profiles')
+            .select('role')
+            .eq('id', data.user.id)
+            .maybeSingle();
 
-        if (profile?.role === 'admin' || data.user.user_metadata?.role === 'admin') {
-          isAuthorizedAdmin = true;
+          const configuredAdminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+          const userEmail = (data.user.email || '').trim().toLowerCase();
+
+          if (
+            profile?.role === 'admin' ||
+            data.user.user_metadata?.role === 'admin' ||
+            (configuredAdminEmail && userEmail === configuredAdminEmail)
+          ) {
+            isAuthorizedAdmin = true;
+          }
         }
       }
     }

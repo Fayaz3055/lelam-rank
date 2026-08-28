@@ -180,6 +180,22 @@ export const authService = {
       };
     } catch (err: unknown) {
       // Fallback sandbox mode for development/test scripts/offline
+      const existingUsers = lelamStore.getUsers();
+      if (existingUsers.some((u) => u.username?.toLowerCase() === cleanUsername)) {
+        return {
+          user: null,
+          error: `Username @${cleanUsername} is already taken.`,
+          requiresEmailVerification: false,
+        };
+      }
+      if (existingUsers.some((u) => u.email?.toLowerCase() === cleanEmail)) {
+        return {
+          user: null,
+          error: 'An account with this email address already exists.',
+          requiresEmailVerification: false,
+        };
+      }
+
       const mockUser: UserProfile = {
         id: `user-${Date.now()}`,
         email: cleanEmail,
