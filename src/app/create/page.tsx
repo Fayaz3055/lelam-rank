@@ -53,6 +53,15 @@ function CreateEntryContent() {
   useEffect(() => {
     loadUser();
     loadRazorpayScript().catch(console.error);
+    const unsub = authService.onAuthStateChange((user) => {
+      setCurrentUser(user);
+      if (user && !bidderName) {
+        setBidderName(user.username ? `@${user.username}` : user.full_name || '');
+      }
+    });
+    return () => {
+      unsub();
+    };
   }, []);
 
   const loadUser = async () => {

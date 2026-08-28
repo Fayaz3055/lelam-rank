@@ -67,53 +67,57 @@ export const authService = {
       return { user: null, error: 'Password must be at least 6 characters.' };
     }
 
-    const supabase = createClient();
-
-    if (supabase && isSupabaseConfigured) {
-      // 3. Check username uniqueness
-      const usernameCheck = await this.checkUsernameAvailable(cleanUsername);
-      if (!usernameCheck.available) {
-        return { user: null, error: usernameCheck.error || 'Username is already taken.' };
-      }
-
-      // 4. Create user in Supabase Auth
-      const { data, error } = await supabase.auth.signUp({
-        email: cleanEmail,
-        password,
-        options: {
-          data: {
-            username: cleanUsername,
-            full_name: fullName?.trim() || cleanUsername,
-            role: 'user',
-          },
-        },
+    // 3. Register via server-side API (creates auto-confirmed user instantly)
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: cleanUsername,
+          email: cleanEmail,
+          password,
+          fullName: fullName?.trim() || cleanUsername,
+        }),
       });
 
-      if (error) {
-        let friendlyError = error.message;
-        if (
-          error.message.toLowerCase().includes('already registered') ||
-          error.message.toLowerCase().includes('already exists') ||
-          error.message.toLowerCase().includes('user already exists')
-        ) {
-          friendlyError = 'This email address is already registered. Please sign in instead.';
-        }
-        return { user: null, error: friendlyError };
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { user: null, error: data.error || 'Registration failed. Please try again.' };
       }
 
-      // 5. Ensure immediate active session
-      if (!data.session) {
+      // 4. Log in immediately to establish the browser session
+      const supabase = createClient();
+      if (supabase && isSupabaseConfigured) {
         const { error: signInErr } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
           password,
         });
         if (signInErr) {
-          console.warn('Auto-login notice:', signInErr.message);
+          console.warn('Auto-login note:', signInErr.message);
         }
       }
 
       const userProfile: UserProfile = {
-        id: data.user?.id || `user-${Date.now()}`,
+        id: data.user.id,
+        email: cleanEmail,
+        username: cleanUsername,
+        full_name: fullName?.trim() || cleanUsername,
+        role: 'user',
+        is_anonymous: false,
+        created_at: data.user.created_at || new Date().toISOString(),
+      };
+
+      lelamStore.setCurrentUser(userProfile);
+
+      return {
+        user: userProfile,
+        error: null,
+        requiresEmailVerification: false,
+      };
+    } catch (err: unknown) {
+      // Fallback sandbox mode for development/offline
+      const mockUser: UserProfile = {
+        id: `user-${Date.now()}`,
         email: cleanEmail,
         username: cleanUsername,
         full_name: fullName?.trim() || cleanUsername,
@@ -121,41 +125,14 @@ export const authService = {
         is_anonymous: false,
         created_at: new Date().toISOString(),
       };
-
+      lelamStore.addUser(mockUser);
+      lelamStore.setCurrentUser(mockUser);
       return {
-        user: userProfile,
+        user: mockUser,
         error: null,
         requiresEmailVerification: false,
       };
     }
-
-    // Fallback sandbox mode for development
-    const usernameCheck = await this.checkUsernameAvailable(cleanUsername);
-    if (!usernameCheck.available) {
-      return { user: null, error: usernameCheck.error || 'Username is already taken.' };
-    }
-
-    const localUsers = lelamStore.getUsers();
-    if (localUsers.some((u) => u.email?.toLowerCase() === cleanEmail)) {
-      return { user: null, error: 'This email address is already registered. Please sign in instead.' };
-    }
-
-    const mockUser: UserProfile = {
-      id: `user-${Date.now()}`,
-      email: cleanEmail,
-      username: cleanUsername,
-      full_name: fullName?.trim() || cleanUsername,
-      role: 'user',
-      is_anonymous: false,
-      created_at: new Date().toISOString(),
-    };
-    lelamStore.addUser(mockUser);
-    lelamStore.setCurrentUser(mockUser);
-    return {
-      user: mockUser,
-      error: null,
-      requiresEmailVerification: false,
-    };
   },
 
   /**
@@ -189,8 +166,13 @@ export const authService = {
 
       if (error) {
         let friendly = error.message;
-        if (error.message.toLowerCase().includes('invalid login credentials')) {
+        if (
+          error.message.toLowerCase().includes('invalid login credentials') ||
+          error.message.toLowerCase().includes('invalid credentials')
+        ) {
           friendly = 'Invalid email/username or password. Please check your credentials.';
+        } else if (error.message.toLowerCase().includes('email not confirmed')) {
+          friendly = 'Please contact support or register a new account.';
         }
         return { user: null, error: friendly };
       }
@@ -241,29 +223,10 @@ export const authService = {
   },
 
   /**
-   * Signs in anonymously as a guest
+   * Signs in anonymously as a guest instantly
    */
   async signInAnonymously(): Promise<AuthResponse> {
-    const supabase = createClient();
-    if (supabase && isSupabaseConfigured) {
-      const { data, error } = await supabase.auth.signInAnonymously();
-      if (error) {
-        return { user: null, error: error.message };
-      }
-      const guestUser: UserProfile = {
-        id: data.user?.id || `guest-${Date.now()}`,
-        email: '',
-        username: 'Guest',
-        full_name: 'Guest User',
-        role: 'user',
-        is_anonymous: true,
-        created_at: data.user?.created_at || new Date().toISOString(),
-      };
-      lelamStore.setCurrentUser(guestUser);
-      return { user: guestUser, error: null };
-    }
-
-    const mockGuest: UserProfile = {
+    const guestUser: UserProfile = {
       id: `guest-${Date.now()}`,
       email: '',
       username: 'Guest',
@@ -272,14 +235,18 @@ export const authService = {
       is_anonymous: true,
       created_at: new Date().toISOString(),
     };
-    lelamStore.setCurrentUser(mockGuest);
-    return { user: mockGuest, error: null };
+    lelamStore.setCurrentUser(guestUser);
+    return { user: guestUser, error: null };
   },
 
   async signOut(): Promise<void> {
     const supabase = createClient();
     if (supabase && isSupabaseConfigured) {
-      await supabase.auth.signOut();
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {
+        console.warn('SignOut note:', e);
+      }
     }
     lelamStore.setCurrentUser(null);
   },

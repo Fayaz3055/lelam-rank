@@ -95,6 +95,17 @@ export default function BidModal({ entry, isOpen, onClose, onSuccess }: BidModal
     }
   }, [isOpen, entry]);
 
+  useEffect(() => {
+    const unsub = authService.onAuthStateChange((user) => {
+      setCurrentUser(user);
+      if (user) {
+        setBidderName(user.username ? `@${user.username}` : user.full_name || '');
+        setBidderEmail(user.email || '');
+      }
+    });
+    return () => unsub();
+  }, []);
+
   // Real-time Estimated Rank Calculation
   useEffect(() => {
     async function updateEstimatedRank() {

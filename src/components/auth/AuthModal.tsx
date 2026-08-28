@@ -21,6 +21,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
 
   if (!isOpen) return null;
 
+  const withTimeout = async <T,>(promise: Promise<T>, timeoutMs = 8000): Promise<T> => {
+    let timeoutId: NodeJS.Timeout;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('Request timed out. Please try again.')), timeoutMs);
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -29,16 +37,14 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
 
     try {
       if (tab === 'forgot') {
-        const result = await authService.resetPassword(email);
-        setLoading(false);
+        const result = await withTimeout(authService.resetPassword(email));
         if (result.error) {
           setError(result.error);
         } else {
           setMessage('A password reset link has been sent to your email address.');
         }
       } else if (tab === 'signup') {
-        const result = await authService.signUp(username, email, password);
-        setLoading(false);
+        const result = await withTimeout(authService.signUp(username, email, password));
         if (result.error) {
           setError(result.error);
         } else {
@@ -46,11 +52,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           setTimeout(() => {
             onSuccess?.();
             onClose();
-          }, 800);
+          }, 300);
         }
       } else {
-        const result = await authService.signIn(email, password);
-        setLoading(false);
+        const result = await withTimeout(authService.signIn(email, password));
         if (result.error) {
           setError(result.error);
         } else {
@@ -59,9 +64,10 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         }
       }
     } catch (err: unknown) {
-      setLoading(false);
       const errMessage = err instanceof Error ? err.message : 'An authentication error occurred.';
       setError(errMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -72,7 +78,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
 
     try {
       const result = await authService.signInAnonymously();
-      setLoading(false);
       if (result.error) {
         setError(result.error);
       } else {
@@ -80,12 +85,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
         setTimeout(() => {
           onSuccess?.();
           onClose();
-        }, 500);
+        }, 150);
       }
     } catch (err: unknown) {
-      setLoading(false);
       const errMessage = err instanceof Error ? err.message : 'Guest sign-in failed.';
       setError(errMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
