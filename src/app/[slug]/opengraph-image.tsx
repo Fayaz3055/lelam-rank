@@ -164,7 +164,7 @@ export default async function Image({ params }: { params: Promise<{ slug: string
             color: '#64748B',
           }}
         >
-          <div>lelamrank.in/{slug}</div>
+          <div>{(process.env.NEXT_PUBLIC_APP_URL || 'https://lelam-rank.vercel.app').replace(/^https?:\/\//, '')}/{slug}</div>
           <div style={{ color: '#E5C158', fontWeight: 700, letterSpacing: '2px' }}>
             BID. RANK. RISE.
           </div>

@@ -35,9 +35,7 @@ export default function DashboardPage() {
     setCurrentUser(user);
     const all = await dbService.getLeaderboardEntries();
     if (user && authService.isRegisteredUser(user)) {
-      const userEntries = all.filter(
-        (e) => e.owner_id === user.id || e.owner_id.startsWith('user-')
-      );
+      const userEntries = all.filter((e) => e.owner_id === user.id);
       setMyEntries(userEntries);
     } else {
       setMyEntries([]);
@@ -177,7 +175,7 @@ export default function DashboardPage() {
                         href={`/${entry.slug}`}
                         className="text-xs text-amber-400 hover:underline font-mono"
                       >
-                        lelamrank.in/{entry.slug}
+                        {(process.env.NEXT_PUBLIC_APP_URL || 'https://lelam-rank.vercel.app').replace(/^https?:\/\//, '')}/{entry.slug}
                       </Link>
                     </div>
                   </div>

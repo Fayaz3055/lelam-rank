@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { dbService } from '@/services/db';
 import { Entry, Bid } from '@/types';
-import { formatINR, formatTimeAgo } from '@/lib/ranking';
+import { formatINR, formatTimeAgo, sanitizeUrl, getCategoryTag } from '@/lib/ranking';
 import BidModal from '@/components/bidding/BidModal';
 import ShareModal from '@/components/share/ShareModal';
 
@@ -119,7 +119,7 @@ export default function EntryProfilePage({
 
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-xs font-black px-2.5 py-0.5 rounded ${
+                  <span className={`text-xs font-black px-2.5 py-0.5 rounded font-mono ${
                     entry.current_rank === 1
                       ? 'bg-amber-400 text-black'
                       : isTop3
@@ -127,6 +127,9 @@ export default function EntryProfilePage({
                       : 'bg-white/[0.1] text-white'
                   }`}>
                     RANK #{entry.current_rank || 'N/A'}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-white/[0.05] border border-white/[0.08] text-slate-300 font-bold uppercase font-mono">
+                    {getCategoryTag(entry)}
                   </span>
                   <span className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">
                     /{entry.slug}
@@ -159,9 +162,9 @@ export default function EntryProfilePage({
             </p>
 
             <div className="flex flex-wrap items-center gap-4 pt-2">
-              {entry.website_url && (
+              {sanitizeUrl(entry.website_url) && (
                 <a
-                  href={entry.website_url}
+                  href={sanitizeUrl(entry.website_url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-xs font-semibold text-slate-200 hover:text-white border border-white/[0.08] transition-colors"
@@ -172,9 +175,9 @@ export default function EntryProfilePage({
                 </a>
               )}
 
-              {entry.social_url && (
+              {sanitizeUrl(entry.social_url) && (
                 <a
-                  href={entry.social_url}
+                  href={sanitizeUrl(entry.social_url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-xs font-semibold text-slate-200 hover:text-white border border-white/[0.08] transition-colors"

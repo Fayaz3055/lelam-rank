@@ -33,7 +33,7 @@ export default function RefundPolicyPage() {
         <section className="space-y-2">
           <h2 className="text-base font-bold text-white">4. Refund Support</h2>
           <p>
-            For refund queries regarding billing anomalies, please email support@lelamrank.in with your transaction details and order ID.
+            For refund queries regarding billing anomalies, please email support@lelam-rank.vercel.app with your transaction details and order ID.
           </p>
         </section>
       </div>

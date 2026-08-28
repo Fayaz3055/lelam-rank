@@ -15,6 +15,7 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://lelam-rank.vercel.app'),
   title: 'LELAM RANK — Bid. Rank. Rise.',
   description:
     'Kerala’s competitive leaderboard where startups, SaaS products, AI tools, and digital ventures compete for visibility by placing bids. 100% deterministic ranking.',
@@ -22,7 +23,7 @@ export const metadata: Metadata = {
     title: 'LELAM RANK — Bid. Rank. Rise.',
     description:
       'Where Kerala startups, businesses and digital products compete for the top.',
-    url: 'https://lelamrank.in',
+    url: process.env.NEXT_PUBLIC_APP_URL || 'https://lelam-rank.vercel.app',
     siteName: 'LELAM RANK',
     type: 'website',
   },

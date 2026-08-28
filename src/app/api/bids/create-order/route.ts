@@ -1,9 +1,19 @@
 import { NextResponse } from 'next/server';
 import { dbService } from '@/services/db';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 export async function POST(req: Request) {
   try {
+    const clientIp = getClientIp(req);
+    const rateCheck = checkRateLimit(`order_${clientIp}`, 30, 60 * 1000);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: 'Too many order requests. Please wait a moment before trying again.' },
+        { status: 429 }
+      );
+    }
+
     const body = await req.json();
     const { amount, entryId, entryName, userId, userEmail } = body;
 

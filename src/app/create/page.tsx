@@ -131,6 +131,9 @@ function CreateEntryContent() {
     }
 
     setStep('confirm');
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
   };
 
   const handlePayAndCreate = async () => {
@@ -247,16 +250,26 @@ function CreateEntryContent() {
     <>
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Header */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-8 scroll-mt-28">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-[#E5C158] text-xs font-semibold mb-3">
             <Trophy className="w-3.5 h-3.5" />
-            <span>ENTRY REGISTRATION</span>
+            <span>
+              {step === 'details'
+                ? 'STEP 1 OF 2 — ENTRY REGISTRATION'
+                : step === 'confirm'
+                ? 'STEP 2 OF 2 — REVIEW & CONFIRM'
+                : step === 'paying'
+                ? 'PAYMENT CHECKOUT'
+                : 'SPOT CLAIMED & VERIFIED'}
+            </span>
           </div>
           <h1 className="text-3xl sm:text-4xl font-black text-white uppercase tracking-tight">
-            Claim Your Spot
+            {step === 'confirm' ? 'Confirm Your Spot' : 'Claim Your Spot'}
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-2 max-w-md mx-auto">
-            Place your initial verified bid and enter the live Kerala leaderboard.
+            {step === 'confirm'
+              ? 'Review your startup details and initial bid before opening secure payment.'
+              : 'Place your initial verified bid and enter the live Kerala leaderboard.'}
           </p>
         </div>
 
@@ -313,7 +326,7 @@ function CreateEntryContent() {
                   Leaderboard URL Slug *
                 </label>
                 <div className="flex items-center rounded-xl bg-[#141720] border border-white/[0.1] px-4 py-3 text-sm text-slate-400 focus-within:border-amber-500/50">
-                  <span className="shrink-0 text-slate-500">lelamrank.in/</span>
+                  <span className="shrink-0 text-slate-500">{(process.env.NEXT_PUBLIC_APP_URL || 'https://lelam-rank.vercel.app').replace(/^https?:\/\//, '')}/</span>
                   <input
                     type="text"
                     required
@@ -490,7 +503,7 @@ function CreateEntryContent() {
 
               <div className="flex justify-between items-center pb-3 border-b border-white/[0.06]">
                 <span className="text-xs text-slate-400">URL Slug</span>
-                <span className="text-sm font-mono text-amber-400">lelamrank.in/{slug}</span>
+                <span className="text-sm font-mono text-amber-400">{(process.env.NEXT_PUBLIC_APP_URL || 'https://lelam-rank.vercel.app').replace(/^https?:\/\//, '')}/{slug}</span>
               </div>
 
               <div className="flex justify-between items-center pb-3 border-b border-white/[0.06]">
@@ -516,10 +529,15 @@ function CreateEntryContent() {
               </span>
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex flex-col sm:flex-row gap-3">
               <button
                 type="button"
-                onClick={() => setStep('details')}
+                onClick={() => {
+                  setStep('details');
+                  if (typeof window !== 'undefined') {
+                    window.scrollTo({ top: 0, behavior: 'instant' });
+                  }
+                }}
                 className="flex-1 py-3.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.08] text-slate-300 font-semibold text-xs transition-colors cursor-pointer"
               >
                 Back to Edit

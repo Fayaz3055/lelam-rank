@@ -7,7 +7,7 @@ async function testRealRazorpayFlow() {
   console.log('REAL RAZORPAY TEST MODE PAYMENT FLOW AUDIT');
   console.log('==================================================\n');
 
-  const BASE_URL = 'http://localhost:3000';
+  const BASE_URL = process.env.TEST_BASE_URL || 'https://lelam-rank.vercel.app';
 
   // 1. Test Server-Side Auth Gate on Order Creation
   console.log('--- 1. Testing Server-Side Auth Gate on Order Creation ---');

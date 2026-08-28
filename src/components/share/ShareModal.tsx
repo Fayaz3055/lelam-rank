@@ -19,7 +19,7 @@ export default function ShareModal({ entry, isOpen, onClose }: ShareModalProps) 
 
   const shareUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/${entry.slug}`
-    : `https://lelamrank.in/${entry.slug}`;
+    : `${process.env.NEXT_PUBLIC_APP_URL || 'https://lelam-rank.vercel.app'}/${entry.slug}`;
 
   const shareText = `🔥 ${entry.name} is currently ranked #${entry.current_rank || 1} on LELAM RANK with a verified bid of ${formatINR(entry.current_bid)}! Can you beat our rank? Check out the leaderboard: ${shareUrl}`;
 
@@ -106,7 +106,7 @@ export default function ShareModal({ entry, isOpen, onClose }: ShareModalProps) 
           </div>
 
           <div className="pt-4 border-t border-white/[0.08] flex items-center justify-between text-[10px] text-slate-400">
-            <span>lelamrank.in/{entry.slug}</span>
+            <span>{(process.env.NEXT_PUBLIC_APP_URL || 'https://lelam-rank.vercel.app').replace(/^https?:\/\//, '')}/{entry.slug}</span>
             <span className="font-mono text-amber-400/90 font-semibold">BID. RANK. RISE.</span>
           </div>
         </div>

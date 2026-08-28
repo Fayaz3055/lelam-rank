@@ -416,9 +416,10 @@ class LelamStore {
     }
 
     const now = new Date().toISOString();
-    const entryId = `entry-${Date.now()}`;
-    const paymentId = `pay-${Date.now()}`;
-    const bidId = `bid-${Date.now()}`;
+    const randSuffix = Math.random().toString(36).substring(2, 8);
+    const entryId = `entry-${Date.now()}-${randSuffix}`;
+    const paymentId = `pay-${Date.now()}-${randSuffix}`;
+    const bidId = `bid-${Date.now()}-${randSuffix}`;
     const ownerId = data.owner_id || 'demo-current-user';
 
     const newEntry: Entry = {
@@ -494,7 +495,23 @@ class LelamStore {
     bidder_id?: string;
     bidder_name?: string;
     visibility?: 'public' | 'anonymous';
+    paymentId?: string;
   }): { entry: Entry; bid: Bid; newRank: number; oldRank: number } {
+    const allBids = this.getStored<Bid[]>(STORAGE_KEYS.BIDS, INITIAL_BIDS);
+    if (data.paymentId) {
+      const existingBid = allBids.find((b) => b.payment_id === data.paymentId);
+      if (existingBid) {
+        const currentEntries = this.getEntries();
+        const foundEntry = currentEntries.find((e) => e.id === data.entryId) || currentEntries[0];
+        return {
+          entry: foundEntry,
+          bid: existingBid,
+          newRank: foundEntry.current_rank || 1,
+          oldRank: foundEntry.current_rank || 1,
+        };
+      }
+    }
+
     const entries = this.getEntries();
     const entryIndex = entries.findIndex((e) => e.id === data.entryId);
     if (entryIndex === -1) {
@@ -510,8 +527,9 @@ class LelamStore {
 
     const oldRank = currentEntry.current_rank || 999;
     const now = new Date().toISOString();
-    const paymentId = `pay-${Date.now()}`;
-    const bidId = `bid-${Date.now()}`;
+    const randSuffix = Math.random().toString(36).substring(2, 8);
+    const paymentId = data.paymentId || `pay-${Date.now()}-${randSuffix}`;
+    const bidId = `bid-${Date.now()}-${randSuffix}`;
     const bidderId = data.bidder_id || 'demo-current-user';
 
     const newBid: Bid = {
@@ -562,7 +580,6 @@ class LelamStore {
       created_at: now,
     };
 
-    const allBids = this.getStored<Bid[]>(STORAGE_KEYS.BIDS, INITIAL_BIDS);
     const allActivity = this.getStored<ActivityEvent[]>(STORAGE_KEYS.ACTIVITY, INITIAL_ACTIVITY);
     const allPayments = this.getStored<Payment[]>(STORAGE_KEYS.PAYMENTS, INITIAL_PAYMENTS);
 

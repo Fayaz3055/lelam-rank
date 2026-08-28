@@ -33,7 +33,7 @@ export default function PrivacyPage() {
         <section className="space-y-2">
           <h2 className="text-base font-bold text-white">4. Contact & Inquiries</h2>
           <p>
-            For privacy inquiries or data removal requests, please contact privacy@lelamrank.in.
+            For privacy inquiries or data removal requests, please contact privacy@lelam-rank.vercel.app.
           </p>
         </section>
       </div>

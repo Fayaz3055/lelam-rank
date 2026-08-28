@@ -49,7 +49,7 @@ export default function HomePage() {
 
   return (
     <div className="space-y-8 pb-16 pt-4 sm:pt-6">
-      {/* 1. Compact Live Leaderboard Top Header Bar */}
+      {/* 1. Live Leaderboard Top Header Bar */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">
           <div className="flex items-center gap-3 text-center sm:text-left">
@@ -60,21 +60,27 @@ export default function HomePage() {
               <div className="flex items-center gap-2 justify-center sm:justify-start">
                 <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 <span className="text-[11px] uppercase font-mono tracking-widest text-[#E5C158] font-bold">
-                  LIVE RANKING BOARD • KERALA
+                  GLOBAL RANKING • KERALA & BEYOND
                 </span>
               </div>
               <h1 className="text-lg sm:text-xl font-black text-white tracking-tight">
-                Where Kerala startups, businesses & products compete for #1
+                Where startups, SaaS, AI tools and businesses compete for ranking.
               </h1>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0">
+            <Link
+              href="/leaderboard"
+              className="px-4 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-200 hover:text-white text-xs font-semibold border border-white/[0.08] transition-colors"
+            >
+              View Leaderboard
+            </Link>
             <Link
               href="/create"
               className="gold-gradient-button text-black font-extrabold text-xs px-5 py-2.5 rounded-xl flex items-center gap-1.5 shadow-lg shadow-amber-500/15"
             >
-              <span>CLAIM YOUR SPOT (₹50 MIN)</span>
+              <span>Claim Your Spot</span>
               <ArrowUpRight className="w-3.5 h-3.5" />
             </Link>
           </div>

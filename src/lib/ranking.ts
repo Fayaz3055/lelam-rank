@@ -107,3 +107,30 @@ export function formatTimeAgo(dateString: string): string {
     day: 'numeric',
   });
 }
+
+/**
+ * URL Sanitizer: Ensures only safe http:// and https:// URLs are used for external links
+ */
+export function sanitizeUrl(url?: string): string | undefined {
+  if (!url || typeof url !== 'string') return undefined;
+  const trimmed = url.trim();
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return undefined;
+}
+
+/**
+ * Category Tag Helper: Infers high-level category badge from title/description
+ */
+export function getCategoryTag(entry: { name: string; description?: string }): string {
+  const text = `${entry.name} ${entry.description || ''}`.toLowerCase();
+  if (/ai|gpt|llm|neural|agent|model|machine learning/i.test(text)) return 'AI';
+  if (/saas|software|cloud|platform|app|crm|erp/i.test(text)) return 'SAAS';
+  if (/fintech|pay|crypto|upi|wallet|bank|money|invest/i.test(text)) return 'FINTECH';
+  if (/coffee|estate|resort|spices|farm|tea|craft|shop|store/i.test(text)) return 'BUSINESS';
+  if (/dev|api|code|git|database|infra/i.test(text)) return 'DEVTOOLS';
+  return 'STARTUP';
+}
+
+
