@@ -23,6 +23,7 @@ import AuthModal from '@/components/auth/AuthModal';
 export default function DashboardPage() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [myEntries, setMyEntries] = useState<Entry[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
   const [bidModalOpen, setBidModalOpen] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -31,21 +32,32 @@ export default function DashboardPage() {
   const isRegistered = authService.isRegisteredUser(currentUser);
 
   const loadData = async () => {
-    const user = await authService.getCurrentUser();
-    setCurrentUser(user);
-    const all = await dbService.getLeaderboardEntries();
-    if (user && authService.isRegisteredUser(user)) {
-      const userEntries = all.filter((e) => e.owner_id === user.id);
-      setMyEntries(userEntries);
-    } else {
-      setMyEntries([]);
+    try {
+      const user = await authService.getCurrentUser();
+      setCurrentUser(user);
+      const all = await dbService.getLeaderboardEntries();
+      if (user && authService.isRegisteredUser(user)) {
+        const userEntries = all.filter((e) => e.owner_id === user.id);
+        setMyEntries(userEntries);
+      } else {
+        setMyEntries([]);
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     loadData();
+    const unsubAuth = authService.onAuthStateChange((user) => {
+      setCurrentUser(user);
+      loadData();
+    });
     window.addEventListener('lelam_store_updated', loadData);
-    return () => window.removeEventListener('lelam_store_updated', loadData);
+    return () => {
+      unsubAuth();
+      window.removeEventListener('lelam_store_updated', loadData);
+    };
   }, []);
 
   const handleBidAgain = (entry: Entry) => {
@@ -108,7 +120,12 @@ export default function DashboardPage() {
         </div>
 
         {/* Entries Grid / List */}
-        {!isRegistered ? (
+        {loading ? (
+          <div className="rounded-3xl bg-[#0E1017] border border-white/[0.08] p-12 text-center max-w-lg mx-auto">
+            <div className="w-8 h-8 rounded-full border-2 border-amber-400 border-t-transparent animate-spin mx-auto mb-3" />
+            <p className="text-xs text-slate-400">Verifying session...</p>
+          </div>
+        ) : !isRegistered ? (
           <div className="rounded-3xl bg-[#0E1017] border border-dashed border-white/[0.15] p-12 text-center max-w-lg mx-auto">
             <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[#E5C158] flex items-center justify-center mx-auto mb-3">
               <ShieldCheck className="w-6 h-6" />

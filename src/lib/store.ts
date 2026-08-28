@@ -603,17 +603,11 @@ class LelamStore {
     this.setStored(STORAGE_KEYS.ENTRIES, updated);
   }
 
-  public getCurrentUser(): UserProfile {
-    return this.getStored<UserProfile>(STORAGE_KEYS.CURRENT_USER, {
-      id: 'demo-current-user',
-      email: 'founder@keralastartup.in',
-      full_name: 'Arun Varma',
-      role: 'user',
-      created_at: new Date().toISOString(),
-    });
+  public getCurrentUser(): UserProfile | null {
+    return this.getStored<UserProfile | null>(STORAGE_KEYS.CURRENT_USER, null);
   }
 
-  public setCurrentUser(user: UserProfile): void {
+  public setCurrentUser(user: UserProfile | null): void {
     this.setStored(STORAGE_KEYS.CURRENT_USER, user);
   }
 

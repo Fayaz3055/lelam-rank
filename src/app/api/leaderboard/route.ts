@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-import { lelamStore } from '@/lib/store';
+import { dbService } from '@/services/db';
 
 export async function GET() {
   try {
-    const entries = lelamStore.getEntries();
-    const stats = lelamStore.getStats();
-    const activity = lelamStore.getActivity();
+    const [entries, stats, activity] = await Promise.all([
+      dbService.getLeaderboardEntries(),
+      dbService.getStats(),
+      dbService.getActivityFeed(),
+    ]);
 
     return NextResponse.json({
       success: true,
@@ -22,3 +24,4 @@ export async function GET() {
     );
   }
 }
+

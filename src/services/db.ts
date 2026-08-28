@@ -11,8 +11,8 @@ export const dbService = {
         .from('leaderboard_view')
         .select('*');
 
-      if (!error && data && data.length > 0) {
-        return data.map((row) => ({
+      if (!error && data) {
+        return data.map((row: any) => ({
           id: row.entry_id,
           owner_id: row.owner_id,
           slug: row.slug,
@@ -75,7 +75,7 @@ export const dbService = {
         .order('verified_at', { ascending: false });
 
       if (!error && data) {
-        return data.map((b) => ({
+        return data.map((b: any) => ({
           id: b.id,
           entry_id: b.entry_id,
           bidder_id: b.bidder_id,
@@ -101,7 +101,7 @@ export const dbService = {
         .limit(20);
 
       if (!error && data) {
-        return data.map((act) => ({
+        return data.map((act: any) => ({
           id: act.id,
           entry_id: act.entry_id,
           entry_name: act.metadata?.entry_name || 'Verified Entry',

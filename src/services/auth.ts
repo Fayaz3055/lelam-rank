@@ -214,6 +214,8 @@ export const authService = {
         created_at: data.user.created_at || new Date().toISOString(),
       };
 
+      lelamStore.setCurrentUser(userProfile);
+
       return {
         user: userProfile,
         error: null,
@@ -257,6 +259,7 @@ export const authService = {
         is_anonymous: true,
         created_at: data.user?.created_at || new Date().toISOString(),
       };
+      lelamStore.setCurrentUser(guestUser);
       return { user: guestUser, error: null };
     }
 
@@ -278,6 +281,7 @@ export const authService = {
     if (supabase && isSupabaseConfigured) {
       await supabase.auth.signOut();
     }
+    lelamStore.setCurrentUser(null);
   },
 
   async resetPassword(email: string): Promise<{ success: boolean; error: string | null }> {
@@ -295,47 +299,144 @@ export const authService = {
   async getCurrentUser(): Promise<UserProfile | null> {
     const supabase = createClient();
     if (supabase && isSupabaseConfigured) {
-      const { data } = await supabase.auth.getUser();
-      if (!data.user) return null;
+      // 1. First check local session for instant non-blocking resolution
+      const { data: sessionData } = await supabase.auth.getSession();
+      const sessionUser = sessionData?.session?.user;
+
+      if (!sessionUser) {
+        // Double check with getUser
+        const { data: userData } = await supabase.auth.getUser();
+        if (!userData?.user) {
+          lelamStore.setCurrentUser(null);
+          return null;
+        }
+      }
+
+      const activeUser = sessionUser || (await supabase.auth.getUser()).data.user;
+      if (!activeUser) {
+        lelamStore.setCurrentUser(null);
+        return null;
+      }
 
       const isAnonymous = Boolean(
-        data.user.is_anonymous ||
-        data.user.app_metadata?.provider === 'anonymous' ||
-        !data.user.email
+        activeUser.is_anonymous ||
+        activeUser.app_metadata?.provider === 'anonymous' ||
+        !activeUser.email
       );
 
       if (isAnonymous) {
-        return {
-          id: data.user.id,
+        const guest: UserProfile = {
+          id: activeUser.id,
           email: '',
           username: 'Guest',
           full_name: 'Guest User',
           role: 'user',
           is_anonymous: true,
-          created_at: data.user.created_at,
+          created_at: activeUser.created_at,
         };
+        lelamStore.setCurrentUser(guest);
+        return guest;
       }
 
       const { data: profile } = await supabase
         .from('profiles')
         .select('username, full_name, role')
-        .eq('id', data.user.id)
+        .eq('id', activeUser.id)
         .maybeSingle();
 
-      const username = profile?.username || data.user.user_metadata?.username || data.user.email?.split('@')[0];
-      const role = profile?.role || data.user.user_metadata?.role || (data.user.email?.includes('admin') ? 'admin' : 'user');
+      const username = profile?.username || activeUser.user_metadata?.username || activeUser.email?.split('@')[0];
+      const role = profile?.role || activeUser.user_metadata?.role || (activeUser.email?.includes('admin') ? 'admin' : 'user');
 
-      return {
-        id: data.user.id,
-        email: data.user.email || '',
+      const userProfile: UserProfile = {
+        id: activeUser.id,
+        email: activeUser.email || '',
         username,
-        full_name: profile?.full_name || data.user.user_metadata?.full_name || username,
+        full_name: profile?.full_name || activeUser.user_metadata?.full_name || username,
         role: role as 'user' | 'admin',
         is_anonymous: false,
-        created_at: data.user.created_at,
+        created_at: activeUser.created_at,
       };
+
+      lelamStore.setCurrentUser(userProfile);
+      return userProfile;
     }
     return lelamStore.getCurrentUser();
+  },
+
+  /**
+   * Subscribes to auth state changes (sign in, sign out, token refresh, initial session recovery)
+   */
+  onAuthStateChange(callback: (user: UserProfile | null) => void): () => void {
+    const supabase = createClient();
+    if (supabase && isSupabaseConfigured) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event: any, session: any) => {
+        if (!session?.user) {
+          lelamStore.setCurrentUser(null);
+          callback(null);
+          return;
+        }
+
+        const user = session.user;
+        const isAnonymous = Boolean(
+          user.is_anonymous ||
+          user.app_metadata?.provider === 'anonymous' ||
+          !user.email
+        );
+
+        if (isAnonymous) {
+          const guest: UserProfile = {
+            id: user.id,
+            email: '',
+            username: 'Guest',
+            full_name: 'Guest User',
+            role: 'user',
+            is_anonymous: true,
+            created_at: user.created_at,
+          };
+          lelamStore.setCurrentUser(guest);
+          callback(guest);
+          return;
+        }
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username, full_name, role')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        const username = profile?.username || user.user_metadata?.username || user.email?.split('@')[0];
+        const role = profile?.role || user.user_metadata?.role || (user.email?.includes('admin') ? 'admin' : 'user');
+
+        const userProfile: UserProfile = {
+          id: user.id,
+          email: user.email || '',
+          username,
+          full_name: profile?.full_name || user.user_metadata?.full_name || username,
+          role: role as 'user' | 'admin',
+          is_anonymous: false,
+          created_at: user.created_at,
+        };
+
+        lelamStore.setCurrentUser(userProfile);
+        callback(userProfile);
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
+
+    const handler = () => {
+      callback(lelamStore.getCurrentUser());
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('lelam_store_updated', handler);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('lelam_store_updated', handler);
+      }
+    };
   },
 
   isRegisteredUser(user?: UserProfile | null): boolean {
@@ -351,3 +452,4 @@ export const authService = {
     return true;
   },
 };
+

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Trophy, Menu, X, ArrowUpRight, ShieldCheck, User } from 'lucide-react';
-import { lelamStore } from '@/lib/store';
+import { authService } from '@/services/auth';
 import { UserProfile } from '@/types';
 import AuthModal from '@/components/auth/AuthModal';
 
@@ -15,10 +15,13 @@ export default function Header() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
 
   useEffect(() => {
-    setCurrentUser(lelamStore.getCurrentUser());
-    const handleUpdate = () => setCurrentUser(lelamStore.getCurrentUser());
-    window.addEventListener('lelam_store_updated', handleUpdate);
-    return () => window.removeEventListener('lelam_store_updated', handleUpdate);
+    authService.getCurrentUser().then(setCurrentUser);
+    const unsub = authService.onAuthStateChange((user) => {
+      setCurrentUser(user);
+    });
+    return () => {
+      unsub();
+    };
   }, []);
 
   const navLinks = [
