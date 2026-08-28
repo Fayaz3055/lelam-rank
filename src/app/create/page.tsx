@@ -165,10 +165,19 @@ function CreateEntryContent() {
         throw new Error('Razorpay Checkout SDK could not be loaded. Please check your network connection.');
       }
 
+      // 3. Get active auth token for secure server verification
+      const token = await authService.getAccessToken();
+      const authHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        authHeaders['Authorization'] = `Bearer ${token}`;
+      }
+
       // 4. Create Order on Server
       const orderRes = await fetch('/api/bids/create-order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({
           amount: initialBidNum,
           entryId: 'new_entry',
@@ -196,10 +205,18 @@ function CreateEntryContent() {
         },
         onSuccess: async (rzpResp) => {
           try {
+            const verifyToken = await authService.getAccessToken();
+            const verifyHeaders: Record<string, string> = {
+              'Content-Type': 'application/json',
+            };
+            if (verifyToken) {
+              verifyHeaders['Authorization'] = `Bearer ${verifyToken}`;
+            }
+
             // 6. Verify Payment Signature and Create Entry on Server
             const verifyRes = await fetch('/api/bids/verify', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: verifyHeaders,
               body: JSON.stringify({
                 razorpay_order_id: rzpResp.razorpay_order_id,
                 razorpay_payment_id: rzpResp.razorpay_payment_id,

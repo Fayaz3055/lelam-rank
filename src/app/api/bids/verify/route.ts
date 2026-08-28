@@ -20,21 +20,39 @@ export async function POST(req: Request) {
       visibility,
     } = body;
 
+    const authHeader = req.headers.get('authorization');
+    const bearerToken = authHeader?.replace(/^Bearer\s+/i, '').trim();
+
     const supabase = await createServerSupabaseClient();
+    let authenticatedUser: any = null;
     let verifiedBidderId = bidderId;
 
     if (supabase) {
-      const { data: authData } = await supabase.auth.getUser();
-      if (!authData?.user) {
+      if (bearerToken) {
+        const { data: tokenAuth } = await supabase.auth.getUser(bearerToken);
+        if (tokenAuth?.user) {
+          authenticatedUser = tokenAuth.user;
+        }
+      }
+
+      if (!authenticatedUser) {
+        const { data: cookieAuth } = await supabase.auth.getUser();
+        if (cookieAuth?.user) {
+          authenticatedUser = cookieAuth.user;
+        }
+      }
+
+      if (!authenticatedUser) {
         return NextResponse.json(
           { error: 'Authentication required. You must sign in to complete bid verification.' },
           { status: 401 }
         );
       }
+
       const isAnon = Boolean(
-        authData.user.is_anonymous ||
-        authData.user.app_metadata?.provider === 'anonymous' ||
-        !authData.user.email
+        authenticatedUser.is_anonymous ||
+        authenticatedUser.app_metadata?.provider === 'anonymous' ||
+        !authenticatedUser.email
       );
       if (isAnon) {
         return NextResponse.json(
@@ -42,7 +60,7 @@ export async function POST(req: Request) {
           { status: 403 }
         );
       }
-      verifiedBidderId = authData.user.id;
+      verifiedBidderId = authenticatedUser.id;
     }
 
     const numericAmount = Number(amount);

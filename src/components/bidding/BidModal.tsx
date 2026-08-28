@@ -197,10 +197,18 @@ export default function BidModal({ entry, isOpen, onClose, onSuccess }: BidModal
         return;
       }
 
-      // 1. Create server-side order with verified user context
+      // 1. Get token and create server-side order with verified user context
+      const token = await authService.getAccessToken();
+      const authHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        authHeaders['Authorization'] = `Bearer ${token}`;
+      }
+
       const orderRes = await fetch('/api/bids/create-order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({
           amount: numericAmount,
           entryId: 'new_entry',
@@ -260,9 +268,17 @@ export default function BidModal({ entry, isOpen, onClose, onSuccess }: BidModal
     userId: string;
   }) => {
     try {
+      const token = await authService.getAccessToken();
+      const verifyHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        verifyHeaders['Authorization'] = `Bearer ${token}`;
+      }
+
       const verifyRes = await fetch('/api/bids/verify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: verifyHeaders,
         body: JSON.stringify({
           ...paymentProof,
           entryId: 'new_entry',

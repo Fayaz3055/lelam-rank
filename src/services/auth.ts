@@ -360,6 +360,19 @@ export const authService = {
     return Boolean(user && !user.is_anonymous && (user.email || (user.username && user.username !== 'Guest')));
   },
 
+  async getAccessToken(): Promise<string | null> {
+    const supabase = createClient();
+    if (supabase && isSupabaseConfigured) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        return data?.session?.access_token || null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  },
+
   async isEmailVerified(): Promise<boolean> {
     const supabase = createClient();
     if (supabase && isSupabaseConfigured) {

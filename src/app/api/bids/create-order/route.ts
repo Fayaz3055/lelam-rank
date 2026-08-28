@@ -17,19 +17,38 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { amount, entryId, entryName, userId, userEmail } = body;
 
+    const authHeader = req.headers.get('authorization');
+    const bearerToken = authHeader?.replace(/^Bearer\s+/i, '').trim();
+
     const supabase = await createServerSupabaseClient();
+    let authenticatedUser: any = null;
+
     if (supabase) {
-      const { data: authData } = await supabase.auth.getUser();
-      if (!authData?.user) {
+      if (bearerToken) {
+        const { data: tokenAuth } = await supabase.auth.getUser(bearerToken);
+        if (tokenAuth?.user) {
+          authenticatedUser = tokenAuth.user;
+        }
+      }
+
+      if (!authenticatedUser) {
+        const { data: cookieAuth } = await supabase.auth.getUser();
+        if (cookieAuth?.user) {
+          authenticatedUser = cookieAuth.user;
+        }
+      }
+
+      if (!authenticatedUser) {
         return NextResponse.json(
           { error: 'Authentication required. You must sign in before initiating a bid.' },
           { status: 401 }
         );
       }
+
       const isAnon = Boolean(
-        authData.user.is_anonymous ||
-        authData.user.app_metadata?.provider === 'anonymous' ||
-        !authData.user.email
+        authenticatedUser.is_anonymous ||
+        authenticatedUser.app_metadata?.provider === 'anonymous' ||
+        !authenticatedUser.email
       );
       if (isAnon) {
         return NextResponse.json(
